@@ -51,26 +51,45 @@ This guide covers deployment steps for the Human Loop application to production.
 **Pipeline Steps**:
 1. Run tests
 2. Build application
-3. Deploy to Vercel/Netlify
+3. Deploy to VirginTech Arc platform or cslaunch.vt
 4. Run post-deployment checks
 
-### 3. Vercel/Netlify Configuration
+### 3. VirginTech Arc Platform / cslaunch.vt Configuration
 
-#### Vercel Setup:
-1. Connect GitHub repository
-2. Configure build settings:
+#### VirginTech Arc Platform Setup:
+1. Access VirginTech Arc platform dashboard
+2. Connect GitHub repository:
+   - Link repository: `https://github.com/mandar-1005/TheHumanLoop`
+   - Select branch: `main` (or production branch)
+3. Configure build settings:
    - Build command: `npm run build`
    - Output directory: `frontend/.next` (if Next.js) or `frontend/build`
    - Install command: `npm install`
-3. Set environment variables
-4. Configure domain
-5. Enable SSL
+   - Working directory: `frontend/` (if frontend is separate)
+4. Set environment variables in platform dashboard
+5. Configure domain settings
+6. Enable SSL certificate
+7. Configure deployment triggers (auto-deploy on push)
 
-#### Netlify Setup:
-1. Connect GitHub repository
-2. Configure build settings in `netlify.toml`
-3. Set environment variables in dashboard
-4. Configure domain and SSL
+#### cslaunch.vt Setup:
+1. Access cslaunch.vt platform
+2. Create new project/deployment
+3. Connect GitHub repository:
+   - Repository URL: `https://github.com/mandar-1005/TheHumanLoop`
+   - Branch: `main`
+4. Configure build configuration:
+   - Build command: `npm run build`
+   - Output directory: `frontend/dist` or `frontend/build`
+   - Node version: Specify if required
+5. Add environment variables:
+   - Use platform's environment variable section
+   - Add all required variables from `.env.example`
+6. Set up domain:
+   - Configure custom domain if needed
+   - SSL will be handled automatically
+7. Configure deployment settings:
+   - Auto-deploy on push to main branch
+   - Manual deployment option for other branches
 
 ### 4. Environment Configuration
 
@@ -82,8 +101,8 @@ This guide covers deployment steps for the Human Loop application to production.
 - `NEXT_PUBLIC_APP_URL` - Production app URL
 
 **Set in**:
-- Vercel: Project Settings → Environment Variables
-- Netlify: Site Settings → Environment Variables
+- VirginTech Arc: Project Settings → Environment Variables
+- cslaunch.vt: Deployment Settings → Environment Variables
 
 ### 5. Database Migration
 
@@ -108,11 +127,14 @@ This guide covers deployment steps for the Human Loop application to production.
 ### 7. Domain Configuration
 
 **Steps**:
-1. Add custom domain in Vercel/Netlify
+1. Add custom domain in VirginTech Arc or cslaunch.vt platform
 2. Configure DNS records:
-   - A record or CNAME pointing to hosting provider
-3. Enable SSL certificate (automatic with Let's Encrypt)
-4. Verify domain is active
+   - A record or CNAME pointing to platform's hosting provider
+   - Follow platform-specific DNS instructions
+3. Enable SSL certificate:
+   - VirginTech Arc: SSL is typically automatic
+   - cslaunch.vt: SSL configuration in domain settings
+4. Verify domain is active and SSL certificate is issued
 
 ### 8. Post-Deployment Verification
 
@@ -147,17 +169,28 @@ This guide covers deployment steps for the Human Loop application to production.
 ## Rollback Procedure
 
 **If deployment fails**:
-1. Revert to previous deployment in Vercel/Netlify dashboard
-2. Check error logs
-3. Fix issues locally
-4. Re-deploy after fixes
+1. Access VirginTech Arc or cslaunch.vt dashboard
+2. Navigate to deployment history
+3. Revert to previous successful deployment
+4. Check error logs in platform dashboard
+5. Review build logs for errors
+6. Fix issues locally
+7. Re-deploy after fixes
+
+**Platform-Specific Rollback**:
+- **VirginTech Arc**: Use deployment history to rollback to previous version
+- **cslaunch.vt**: Access deployment management to revert to previous build
 
 ## Continuous Deployment
 
 **Setup**:
-- Automatic deployment on push to `main` branch
-- Manual deployment for other branches
-- Preview deployments for pull requests
+- Configure automatic deployment on push to `main` branch in platform settings
+- Manual deployment option for other branches
+- Preview deployments for pull requests (if supported by platform)
+
+**Platform Configuration**:
+- **VirginTech Arc**: Enable auto-deploy in project settings
+- **cslaunch.vt**: Configure deployment triggers in project settings
 
 ## Production Best Practices
 
@@ -183,9 +216,11 @@ This guide covers deployment steps for the Human Loop application to production.
 ### Common Issues:
 
 **Build Failures**:
-- Check build logs in deployment platform
+- Check build logs in VirginTech Arc or cslaunch.vt dashboard
 - Verify all dependencies are in package.json
 - Check for TypeScript errors
+- Verify Node.js version compatibility with platform
+- Check working directory configuration if frontend/backend are separate
 
 **Database Connection Issues**:
 - Verify Supabase URL and keys
