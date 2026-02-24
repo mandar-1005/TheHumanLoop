@@ -23,9 +23,11 @@ jobs:
         cache-dependency-path: './package.json' 
 
     - name: Install dependencies
+      working-directory: ./frontend
       run: npm install
-    
+
     - name: Build Project
+      working-directory: ./frontend
       run: npm run build
       env:
             # We provide "placeholder" strings so the build doesn't crash
