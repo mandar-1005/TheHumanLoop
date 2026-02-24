@@ -1,0 +1,36 @@
+name: MARi Frontend CI/CD
+
+on:
+  push:
+    branches: [ main, "feature/**" ] # Triggers on main and any feature branches
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        # Important: Running 'npm install' in the frontend directory
+        cache-dependency-path: './package.json' 
+
+    - name: Install dependencies
+      run: npm install
+    
+    - name: Build Project
+      run: npm run build
+      env:
+            # We provide "placeholder" strings so the build doesn't crash
+            VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
+            VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder-key' }}
+
+    - name: Run Linting
+      run: npm run lint
