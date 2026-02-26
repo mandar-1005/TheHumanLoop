@@ -2,7 +2,7 @@
 
 ## Tables Overview
 
-This document outlines the database tables needed for the Human Loop application. Place SQL migration files in `supabase/migrations/001_initial_schema/`.
+This document outlines the database tables needed for the **FedRAMP Training Creator** (companies create trainings from SSP + roles; output = study guide + role-based assessment). Place SQL migration files in `supabase/migrations/001_initial_schema/`.
 
 ## Core Tables
 
@@ -14,7 +14,8 @@ This document outlines the database tables needed for the Human Loop application
 **Columns**:
 - `id` (UUID, Primary Key, references auth.users)
 - `name` (TEXT)
-- `email` (TEXT, unique)
+- `email` (TEXT, unique) - Work email
+- `organization` (TEXT), `role` (TEXT) - MARi employee context
 - `preferences` (JSONB) - Store user preferences
 - `created_at` (TIMESTAMP)
 - `updated_at` (TIMESTAMP)
@@ -23,10 +24,10 @@ This document outlines the database tables needed for the Human Loop application
 - Links to Supabase Auth users table
 - Store preferences as JSONB for flexibility
 
-### 2. Documents (`documents`)
+### 2. Documents / SSPs (`documents`)
 **Location**: `supabase/migrations/001_initial_schema/documents.sql`
 
-**Purpose**: Store uploaded PDF document metadata
+**Purpose**: Store uploaded SSP (or other PDF) document metadata; synthetic SSPs can reference generated content
 
 **Columns**:
 - `id` (UUID, Primary Key)
@@ -35,6 +36,7 @@ This document outlines the database tables needed for the Human Loop application
 - `file_path` (TEXT) - Supabase Storage path
 - `file_size` (BIGINT)
 - `extracted_text` (TEXT) - Raw extracted text
+- `is_synthetic` (BOOLEAN) - True if Gemini-generated (no real SSP)
 - `folder_id` (UUID, Foreign Key -> folders, nullable)
 - `created_at` (TIMESTAMP)
 - `updated_at` (TIMESTAMP)
@@ -43,18 +45,29 @@ This document outlines the database tables needed for the Human Loop application
 - Index on `user_id` for faster queries
 - Index on `created_at` for sorting
 
-### 3. Flashcards (`flashcards`)
-**Location**: `supabase/migrations/001_initial_schema/flashcards.sql`
+### 3. Roles (`roles`) – optional table or org config
+**Purpose**: Organization-defined roles (e.g. Developer, Security Lead, Developer Team Lead); used to select assessment format and Bloom’s level.
 
-**Purpose**: Store generated flashcard decks
+**Columns** (if table): `id`, `organization_id` or `user_id`, `name`, `bloom_level` (e.g. 'remember', 'apply', 'create'), `assessment_format` (e.g. 'multiple_choice', 'case_study'), `created_at`, `updated_at`.
+
+### 4. Training modules (`training_modules`)
+**Purpose**: One generated training package per (SSP + role): study guide + assessment.
+
+**Columns**: `id`, `user_id`, `document_id` (SSP), `role_id` or `role_name`, `study_guide` (TEXT or JSONB), `assessment` (JSONB – items with format: mc, short_response, case_study, flashcard), `created_at`, `updated_at`.
+
+### 5. Quizzes / Assessments (`flashcards` or `quizzes`)
+**Location**: `supabase/migrations/001_initial_schema/flashcards.sql` (or `quizzes.sql`)
+
+**Purpose**: Store assessment items (MC, short response, case study, flashcards) with optional descriptive answers; link to training_module.
 
 **Columns**:
 - `id` (UUID, Primary Key)
 - `user_id` (UUID, Foreign Key -> user_profiles)
+- `training_module_id` (UUID, Foreign Key -> training_modules, nullable)
 - `document_id` (UUID, Foreign Key -> documents, nullable)
 - `title` (TEXT)
-- `cards` (JSONB) - Array of card objects with question/answer
-- `format_type` (TEXT) - 'bullet', 'flashcard', 'long-form'
+- `cards` (JSONB) - Array of items: question, answer, format_type
+- `format_type` (TEXT) - 'multiple_choice', 'short_response', 'case_study', 'flashcard', 'bullet', 'long-form'
 - `folder_id` (UUID, Foreign Key -> folders, nullable)
 - `is_reviewed` (BOOLEAN) - Review queue status
 - `created_at` (TIMESTAMP)
@@ -65,7 +78,7 @@ This document outlines the database tables needed for the Human Loop application
 - Index on `user_id`
 - Index on `is_reviewed` for review queue queries
 
-### 4. Chat Sessions (`chat_sessions`)
+### 6. Chat Sessions (`chat_sessions`)
 **Location**: `supabase/migrations/001_initial_schema/chat_sessions.sql`
 
 **Purpose**: Store chat conversation sessions
@@ -80,7 +93,7 @@ This document outlines the database tables needed for the Human Loop application
 **Indexes**:
 - Index on `user_id` and `created_at` for sorting
 
-### 5. Chat Messages (`chat_messages`)
+### 7. Chat Messages (`chat_messages`)
 **Location**: `supabase/migrations/001_initial_schema/chat_messages.sql`
 
 **Purpose**: Store individual chat messages
@@ -100,7 +113,7 @@ This document outlines the database tables needed for the Human Loop application
 - Index on `session_id` for loading conversation history
 - Index on `created_at` for chronological ordering
 
-### 6. Feedback (`feedback`)
+### 8. Feedback (`feedback`)
 **Location**: `supabase/migrations/001_initial_schema/feedback.sql`
 
 **Purpose**: Store user feedback for reinforcement learning
@@ -119,7 +132,7 @@ This document outlines the database tables needed for the Human Loop application
 - Index on `user_id` and `created_at`
 - Index on `positive_score` for analytics
 
-### 7. Folders/Categories (`folders`)
+### 9. Folders/Categories (`folders`)
 **Location**: `supabase/migrations/001_initial_schema/folders.sql`
 
 **Purpose**: Organize documents and flashcards into folders

@@ -2,15 +2,15 @@
 
 ## Overview
 
-This document explains where to place different types of files and code in the project.
+This document explains where to place different types of files and code. **Product context:** FedRAMP Training Creator – companies create trainings from **SSP + roles**; output is **training module** (study guide + **role-based assessment**: MC, short response, case study, flashcards; see [PRODUCT_VISION.md](./PRODUCT_VISION.md)).
 
 ## Frontend Structure (`frontend/src/`)
 
 ### Components (`frontend/src/components/`)
 
 #### Authentication Components (`components/auth/`)
-- **Login Component**: Email and password fields, error handling
-- **Registration Component**: Name, email, password, confirm password fields
+- **Login Component**: Work email and password (MARi employees)
+- **Registration Component**: Name, work email, organization, role, password
 - **Protected Route Wrapper**: HOC for route protection
 - **Auth Context Provider**: Authentication state management
 
@@ -25,11 +25,11 @@ This document explains where to place different types of files and code in the p
 - **File Navigation** (`file-navigation/`): File browser component
 - **Main Content** (`main-content/`): Main dashboard content area
 
-#### Flashcard Components (`components/flashcards/`)
-- **Flashcard Card** (`flashcard-card/`): Individual flashcard with flip animation
-- **Flashcard Grid** (`flashcard-grid/`): Responsive grid layout for cards
-- **Review Queue** (`review-queue/`): Queue management before final save
-- **Edit Inline** (`edit-inline/`): Inline editing for card text fields
+#### Quiz / Training Components (`components/flashcards/` or `components/quizzes/`)
+- **Quiz Card**: Question + descriptive answer (compliance content)
+- **Quiz Grid**: Responsive layout for quiz items
+- **Review Queue** (`review-queue/`): Review generated Q&A before save
+- **Edit Inline** (`edit-inline/`): Edit question and descriptive answer text
 
 #### File Upload Components (`components/file-upload/`)
 - **File Drop** (`file-drop/`): Drag-and-drop upload area with validation

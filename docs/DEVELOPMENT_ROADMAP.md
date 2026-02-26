@@ -1,5 +1,9 @@
 # Development Roadmap
 
+**Product:** FedRAMP Training Creator – tool for companies to **create** FedRAMP trainings (SSP + roles → training module: study guide + role-based assessment). See [PRODUCT_VISION.md](./PRODUCT_VISION.md).
+
+---
+
 ## Phase 1: Foundation & Setup
 
 ### Supabase Configuration
@@ -16,72 +20,78 @@
 - [ ] Create theme context and provider
 - [ ] Set up Supabase client configuration
 
-### Authentication
-- [ ] Design Login UI (Figma wireframe)
-- [ ] Design Registration UI (Figma wireframe)
-- [ ] Build Login component with email/password fields
-- [ ] Build Registration component with validation
+### Authentication (MARi employees)
+- [x] Design Login UI (Figma wireframe)
+- [x] Design Registration UI (Figma wireframe)
+- [x] Build Login component (work email, password)
+- [x] Build Registration component (name, work email, organization, role)
 - [ ] Connect to Supabase Auth
 - [ ] Implement protected routes
 - [ ] Add error handling for invalid credentials
-- [ ] Client-side validation (email format, password strength)
+- [x] Client-side validation (email format, password strength)
 
 ## Phase 2: Core Features
 
+### Authoring: SSP & Roles (training creation)
+- [ ] Define data model for **SSP** (upload or synthetic); store in DB/storage
+- [ ] Define **roles** (e.g. MARi’s 4: developers, security leads, developer team leads, + one); role metadata (name, level, Bloom’s target)
+- [ ] Build authoring UI: SSP input (upload PDF or “generate synthetic SSP” via Gemini), role list/config
+- [ ] Agent: generate **study guide** from SSP + FedRAMP docs, per role
+- [ ] Agent: generate **assessment** from study guide + role (format by Bloom’s: MC, short response, case study, flashcards)
+- [ ] Implement **AI grading** for case-study / short-response assessments
+- [ ] Output: **training module** (study guide + assessment) per role; save and version
+
 ### File Upload & Processing
-- [ ] Build File Drop component with drag-and-drop
-- [ ] Implement file-type validation (PDF only)
-- [ ] Create file upload portal UI
-- [ ] Develop PDF text extraction script
+- [ ] Build File Drop component (SSP PDF upload)
+- [ ] Implement file-type validation (PDF)
+- [ ] Develop PDF text extraction for SSP
 - [ ] Integrate file upload with Supabase Storage
-- [ ] Build File Manager component
-- [ ] Display uploaded files list
+- [ ] Build File Manager for SSPs/documents
 
-### Flashcard Generation
-- [ ] Program Google ADK Agent integration
-- [ ] Create agent prompts for Q&A JSON structure
-- [ ] Implement text-to-flashcard conversion
-- [ ] Design Flashcard component with flip animation
-- [ ] Create responsive flashcard grid layout
-- [ ] Implement conditional rendering (text/visual cards)
-- [ ] Add card formatting options (Bullet/Flashcard/Long-form)
+### Quizzes & Assessments (role-based)
+- [ ] Program Google ADK Agent for content + assessment generation
+- [ ] Support **assessment formats**: multiple choice, short response, case studies, flashcards
+- [ ] Map **role → format** (e.g. developers → MC; leads → case study, AI-graded)
+- [ ] Design Quiz/Assessment component (format-aware display)
+- [ ] Create training module list (by role, by module)
+- [ ] Descriptive answers / study guide display
 
-### Chat Interface
-- [ ] Build Chat UI window component
+### Training Chat Interface
+- [ ] Build Chat UI for training Q&A
 - [ ] Create message bubble components
-- [ ] Integrate agent into chat UI
-- [ ] Implement answer-matching logic
+- [ ] Integrate agent (compliance/FedRAMP context)
+- [ ] Implement answer-matching vs descriptive answers
 - [ ] Add visual feedback indicators (Green/Red)
 - [ ] Create Regenerate button component
 - [ ] Implement API logic for temperature modification
 - [ ] Build chat history sidebar
 - [ ] Create session management
 
-## Phase 3: User Management
+## Phase 3: User Management (MARi employees)
 
 ### Profile & Account
-- [ ] Initialize user profile database table
+- [ ] Initialize user profile table (role, organization)
 - [ ] Create profile/account management page
-- [ ] Build profile form (name, email, password)
+- [ ] Build profile form (name, work email, password)
 - [ ] Implement password update functionality
 - [ ] Create Delete Account logic with double-confirmation
-- [ ] Add user preferences storage
+- [ ] Add user preferences and training progress
 
 ### Dashboard
 - [ ] Design HomePage layout (Figma wireframe)
 - [ ] Build Dashboard with sidebar and main content
-- [ ] Create File Manager section
-- [ ] Integrate Chatbot interface
-- [ ] Add file navigation sidebar
+- [ ] Create File Manager (policy/SSP documents)
+- [ ] Integrate Training Chat interface
+- [ ] Add file/document navigation sidebar
 - [ ] Implement responsive layout
 
 ## Phase 4: Advanced Features
 
 ### Review & Editing
-- [ ] Create Review Queue logic
+- [ ] Create Review Queue for generated Q&A
 - [ ] Build Review Queue UI
-- [ ] Implement Edit Inline functionality
-- [ ] Add card text field editing
+- [ ] Implement Edit Inline for quiz questions and descriptive answers
+- [ ] Add text field editing (question + answer)
 - [ ] Create save/cancel actions
 
 ### Search & Export
@@ -157,7 +167,7 @@
 - [ ] Implement Service Workers
 - [ ] Add PWA manifest
 - [ ] Create offline caching strategy
-- [ ] Cache flashcard decks locally
+- [ ] Cache quiz decks / training content locally
 - [ ] Add offline mode indicators
 
 ## Phase 9: Testing & Quality
@@ -166,7 +176,7 @@
 - [ ] Write unit tests for components
 - [ ] Write integration tests for API
 - [ ] Create E2E tests for user flows
-- [ ] Manual data validation (20+ cards vs PDFs)
+- [ ] Manual data validation (e.g. 20+ quiz items vs source PDFs)
 - [ ] Cross-browser testing
 - [ ] Mobile responsiveness testing
 
@@ -182,7 +192,7 @@
 - [ ] Set up deployment pipeline
 - [ ] Configure CI/CD workflows
 - [ ] Set up production environment variables
-- [ ] Deploy to Vercel/Netlify
+- [ ] Deploy to VirginTech Arc / cslaunch.vt
 - [ ] Configure domain and SSL
 
 ### Documentation
