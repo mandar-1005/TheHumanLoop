@@ -1,8 +1,10 @@
+# MARi Secure Training – Frontend
 
+React frontend for the FedRAMP Training Creator (login, registration, and training UI).
 
-  ## Running the code
+## Running the app
 
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
-  
+```bash
+npm i
+npm run dev
+```

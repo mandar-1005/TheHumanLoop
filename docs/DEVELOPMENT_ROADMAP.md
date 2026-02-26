@@ -21,8 +21,8 @@
 - [ ] Set up Supabase client configuration
 
 ### Authentication (MARi employees)
-- [x] Design Login UI (Figma wireframe)
-- [x] Design Registration UI (Figma wireframe)
+- [x] Design Login UI
+- [x] Design Registration UI
 - [x] Build Login component (work email, password)
 - [x] Build Registration component (name, work email, organization, role)
 - [ ] Connect to Supabase Auth
@@ -78,7 +78,7 @@
 - [ ] Add user preferences and training progress
 
 ### Dashboard
-- [ ] Design HomePage layout (Figma wireframe)
+- [ ] Design HomePage layout
 - [ ] Build Dashboard with sidebar and main content
 - [ ] Create File Manager (policy/SSP documents)
 - [ ] Integrate Training Chat interface

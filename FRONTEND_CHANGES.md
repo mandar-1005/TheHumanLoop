@@ -7,7 +7,7 @@ Summary of updates for the Human Loop frontend (aligned with [FrontendSetUp](htt
 ## Overview
 
 - **Login** and **Registration** pages use the MARi Secure Training design (two-panel layout, validation, Tailwind).
-- Unused Figma/legacy code and duplicate assets were removed.
+- Unused/legacy code and duplicate assets were removed.
 - App entry and styles were fixed so the app builds and runs cleanly.
 
 ---
@@ -68,7 +68,7 @@ Summary of updates for the Human Loop frontend (aligned with [FrontendSetUp](htt
 
 - **`frontend/src/app/`** (entire folder) – Old app entry, router, routes, and unused UI components.
 - **`frontend/src/styles/theme.css`** – Tailwind v4 theme; not used with current PostCSS/Tailwind v3 setup.
-- **`frontend/figma registration/`** (entire folder) – Figma export; design is implemented in `src/pages/Login.tsx` and `src/pages/Register.tsx`.
+- **Legacy registration export folder** (removed) – Design is implemented in `src/pages/Login.tsx` and `src/pages/Register.tsx`.
 - **`frontend/src/App.css`** – Removed; global styles come from `styles/index.css`.
 - **`frontend/src/styles/Login.css`** – Replaced by Tailwind on the Login page.
 - **`frontend/src/index.css`** – Replaced by `styles/index.css`.
