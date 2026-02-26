@@ -1,0 +1,127 @@
+.login-container {
+    min-height: 100vh;
+    width: 100%;
+    background-color: #EDF2F7;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.login-card {
+    background-color: #4A5568;
+    width: 100%;
+    max-width: 500px;
+    min-width: 420px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    padding: 60px 50px;
+    border-radius: 25px;
+    text-align: center;
+    /*font-weight: bold;*/
+}
+
+.login-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 35px;
+}
+
+
+.profile-icon {
+    width: 70px;
+    height: 70px;
+    background-color: #EDF2F7;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 36px;
+    color: #121212;
+    margin: 0;
+}
+
+.login-title {
+    margin: 0;
+    color: #EDF2F7;
+    font-weight: 400;
+    font-size: 42px;
+}
+
+.input-group {
+    background-color: #EDF2F7;
+    border-radius: 30px;
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    margin-bottom: 20px;
+}
+
+.input-group input {
+    border: none;
+    outline: none;
+    background: transparent;
+    width: 100%;
+    font-size: 14px;
+    color: #121212;
+}
+
+.input-icon {
+    margin-right: 10px;
+    font-size: 14px;
+}
+
+.remember-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: 25px;
+    font-size: 14px;
+    color: #EDF2F7;
+}
+
+.remember-row input {
+    margin-right: 8px;
+    accent-color: #EDF2F7;
+}
+
+.button-row {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.btn-primary,
+.btn-secondary {
+    background-color: #EDF2F7;
+    color: #121212;
+    border: none;
+    border-radius: 25px;
+    padding: 10px 30px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.btn-primary:hover,
+.btn-secondary:hover {
+    opacity: 0.85;
+}
+
+.forgot-text {
+    font-size: 13px;
+    color: #EDF2F7;
+    cursor: pointer;
+}
+
+.profile-icon img {
+    width: 35px;
+    height: 35px;
+}
+
+.input-icon img {
+    width: 16px;
+    height: 16px;
+    margin-top: 7px;
+}
