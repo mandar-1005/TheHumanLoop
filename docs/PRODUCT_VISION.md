@@ -1,4 +1,4 @@
-# Product Vision – FedRAMP Training Creator (from Nancy meeting)
+# Product Vision – FedRAMP Training Creator
 
 ## The exact idea
 
@@ -58,7 +58,7 @@ Assessment **format and cognitive level** depend on the role:
 | **Higher level (e.g. dev lead)** | Applying / creating | **Case study** – scenario-based; **AI-graded** |
 | (Other roles) | Varies | **Short response**, **flashcards**, **MC**, **case studies** as appropriate |
 
-So: **remembering** → MC/flashcards; **applying** → short response / scenarios; **creating** → case studies, AI grading. This is the “change format by role” idea from Nancy.
+So: **remembering** → MC/flashcards; **applying** → short response / scenarios; **creating** → case studies, AI grading. This is the “change format by role” idea.
 
 ---
 
@@ -82,7 +82,7 @@ Format chosen per role to match Bloom’s level and learning goals.
 
 ## Summary table
 
-| Before (generic) | After (Nancy meeting) |
+| Before (generic) | After (pivot) |
 |------------------|------------------------|
 | Study tool for employees | **Tool for companies to create** FedRAMP trainings |
 | One-size-fits-all quizzes | **Role-based** training + **role-based assessment format** |

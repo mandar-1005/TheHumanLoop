@@ -55,7 +55,7 @@ See `.env.example` for required variables.
 
 ## Documentation
 
-- [Product Vision](./docs/PRODUCT_VISION.md) – exact idea from Nancy meeting (SSP + roles → training module, Bloom’s).
+- [Product Vision](./docs/PRODUCT_VISION.md) – SSP + roles → training module, Bloom’s-aligned assessments.
 - [Development Roadmap](./docs/DEVELOPMENT_ROADMAP.md) – phases and tasks.
 - [Contributing](./docs/CONTRIBUTING.md) – guidelines.
 
