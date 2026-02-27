@@ -1,4 +1,4 @@
-# MARi Secure Training – FedRAMP Training Creator
+#Secure Training – FedRAMP Training Creator
 
 A **company-facing tool** that creates FedRAMP compliance trainings. Companies (e.g. MARi) provide an **SSP** (System Security Plan) and **role definitions**; the system outputs a **training module** (study guide + role-based assessment). Employees then take that training; assessment format varies by role (e.g. multiple choice for developers, case studies with AI grading for leads), aligned with **Bloom’s taxonomy**.
 
