@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/Login';
 import { RegistrationPage as Register } from './pages/Register';
+import { AccountPage } from './pages/Account';
 
 /**
  * MARi Main Application Entry
@@ -18,6 +19,7 @@ function App() {
 
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/account" element={<AccountPage />} />
 
                 {/* Placeholder for future routes:
           <Route path="/dashboard" element={<Dashboard />} />
