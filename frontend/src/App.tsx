@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { LoginPage } from './pages/Login';
 import { RegistrationPage as Register } from './pages/Register';
 import { AccountPage } from './pages/Account';
+import { Dashboard } from './pages/Dashboard';
 
 /**
  * MARi Main Application Entry
@@ -20,10 +21,7 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/account" element={<AccountPage />} />
-
-                {/* Placeholder for future routes:
-          <Route path="/dashboard" element={<Dashboard />} />
-        */}
+                <Route path="/dashboard" element={<Dashboard />} />
 
                 {/* Catch-all route for 404s */}
                 <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />
