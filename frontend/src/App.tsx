@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/Login';
 import { RegistrationPage as Register } from './pages/Register';
 import { AccountPage } from './pages/Account';
@@ -12,21 +14,33 @@ import { Dashboard } from './pages/Dashboard';
 
 function App() {
     return (
-        <Router>
-            <Routes>
-                {/* Redirect base URL to login for now */}
-                <Route path="/" element={<Navigate to="/login" />} />
+        <AuthProvider>
+            <Router>
+                <Routes>
+                    {/* Redirect base URL to login */}
+                    <Route path="/" element={<Navigate to="/login" replace />} />
 
+                    {/* Public routes */}
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/register" element={<Register />} />
 
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/account" element={<AccountPage />} />
-                <Route path="/dashboard" element={<Dashboard />} />
+                    {/* Protected routes */}
+                    <Route path="/account" element={
+                        <ProtectedRoute>
+                            <AccountPage />
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/dashboard" element={
+                        <ProtectedRoute>
+                            <Dashboard />
+                        </ProtectedRoute>
+                    } />
 
-                {/* Catch-all route for 404s */}
-                <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />
-            </Routes>
-        </Router>
+                    {/* Catch-all route for 404s */}
+                    <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />
+                </Routes>
+            </Router>
+        </AuthProvider>
     );
 }
 
