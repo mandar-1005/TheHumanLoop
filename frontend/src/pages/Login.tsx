@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Shield, Lock, AlertCircle, Mail } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabaseClient'; // adjust path if needed
+import { supabase } from '../lib/supabaseClient';
 
 interface FormData {
     email: string;
