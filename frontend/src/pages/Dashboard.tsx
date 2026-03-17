@@ -16,9 +16,13 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  Download
+  Download,
+    LogOut
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+// Add this import at the top
+import { useAuth } from '../context/AuthContext';
+
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', active: true },
@@ -164,6 +168,7 @@ const fedRAMPCoverageData = [
 ];
 
 export function Dashboard() {
+    const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('Developers');
   const tabs = ['Developers', 'Security Leads', 'Team Leads', 'Other'];
 
@@ -248,12 +253,19 @@ export function Dashboard() {
         </div>
 
         {/* Bottom section */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
-          <div className="text-xs text-gray-500">
-            <p className="mb-1">© 2026 MARi</p>
-            <p>FedRAMP Compliant</p>
+          <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
+              <button
+                  onClick={signOut}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors mb-4"
+              >
+                  <LogOut className="w-5 h-5" />
+                  Sign Out
+              </button>
+              <div className="text-xs text-gray-500">
+                  <p className="mb-1">© 2026 MARi</p>
+                  <p>FedRAMP Compliant</p>
+              </div>
           </div>
-        </div>
       </aside>
 
       {/* Main Content */}
