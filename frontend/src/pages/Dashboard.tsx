@@ -20,7 +20,6 @@ import {
     LogOut
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-// Add this import at the top
 import { useAuth } from '../context/AuthContext';
 
 
