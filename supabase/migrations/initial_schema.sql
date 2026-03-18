@@ -32,3 +32,17 @@ WITH CHECK (
     SELECT organization_id FROM public.profiles WHERE id = auth.uid()
   )
 );
+
+-- Auto-create a profile row on new user signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+INSERT INTO public.profiles (id, organization_id)
+VALUES (new.id, 'default'); -- replace 'default' with your logic
+RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
