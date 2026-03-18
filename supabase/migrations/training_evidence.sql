@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.training_evidence (
     organization_id TEXT NOT NULL,
 
     -- What they completed
-    training_id BIGINT REFERENCES public.trainings ON DELETE SET NULL,
+    training_id UUID REFERENCES public.trainings ON DELETE SET NULL,
     company_role TEXT NOT NULL,
 
     -- Results
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.training_evidence (
     completed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
 
     -- Audit metadata
-    assessment_type TEXT,
+    assessment_type TEXT, -- 'multiple_choice', 'case_study', 'short_response', 'flashcards'
     grader_feedback TEXT,
     evidence_notes TEXT,
 
@@ -39,7 +39,7 @@ CREATE POLICY "Users can insert own evidence"
 ON public.training_evidence FOR INSERT
 WITH CHECK (auth.uid() = user_id);
 
--- Indexes for fast audit queries
+-- Index for fast audit queries
 CREATE INDEX training_evidence_org_idx ON public.training_evidence (organization_id);
 CREATE INDEX training_evidence_user_idx ON public.training_evidence (user_id);
 CREATE INDEX training_evidence_training_idx ON public.training_evidence (training_id);
