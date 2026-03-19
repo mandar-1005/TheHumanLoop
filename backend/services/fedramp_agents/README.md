@@ -2,9 +2,7 @@
 
 ## Install Dependencies
 
-pip install google-genai
-pip install supabase
-pip install python-dotenv
+python -m pip install -r requirements.txt
 
 ## Create a .env File
 
