@@ -1,4 +1,4 @@
-from orchestrator import generate_training
+from app.pipeline.orchestrator import generate_training
 
 # Fake SSP (short + simple for testing)
 fake_ssp = """

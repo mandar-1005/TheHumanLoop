@@ -1,4 +1,4 @@
-from base_agent import BaseAgent
+from app.pipeline.base_agent import BaseAgent
 
 ssp_system_prompt = """
 You are a FedRAMP compliance analysis agent.

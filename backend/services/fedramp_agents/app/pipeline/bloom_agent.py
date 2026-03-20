@@ -1,4 +1,4 @@
-from base_agent import BaseAgent
+from app.pipeline.base_agent import BaseAgent
 
 bloom_system_prompt = """
 You are an instructional design expert using Bloom's Taxonomy.

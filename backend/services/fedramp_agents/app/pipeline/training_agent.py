@@ -1,4 +1,4 @@
-from base_agent import BaseAgent
+from app.pipeline.base_agent import BaseAgent
 
 training_system_prompt = """
 You are a FedRAMP training content generator.

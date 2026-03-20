@@ -1,6 +1,6 @@
-from ssp_agent import SSPAgent
-from bloom_agent import BloomAgent
-from training_agent import TrainingAgent
+from app.pipeline.ssp_agent import SSPAgent
+from app.pipeline.bloom_agent import BloomAgent
+from app.pipeline.training_agent import TrainingAgent
 
 def generate_training(ssp_text, roles):
     ssp_agent = SSPAgent()
