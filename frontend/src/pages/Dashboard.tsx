@@ -22,6 +22,7 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 
 const navItems = [
@@ -169,6 +170,7 @@ const fedRAMPCoverageData = [
 
 export function Dashboard() {
     const { signOut, user } = useAuth();
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('Developers');
     const tabs = ['Developers', 'Security Leads', 'Team Leads', 'Other'];
 
@@ -257,10 +259,13 @@ export function Dashboard() {
                         {navItems.map((item) => (
                             <button
                                 key={item.label}
-                                onClick={(e) => {
+                                onClick={() => {
+                                    if (item.href === '/training-modules') {
+                                        navigate('/training-modules');
+                                        return;
+                                    }
+
                                     if (!item.active) {
-                                        e.preventDefault();
-                                        // For demo purposes, show alert for unimplemented routes
                                         alert(`${item.label} page coming soon!`);
                                     }
                                 }}

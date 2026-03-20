@@ -39,6 +39,11 @@ cp .env.example .env.local
 cd frontend && npm run dev
 ```
 
+### Backend (FedRAMP agents)
+
+```python -m pip install -r backend/services/fedramp_agents/requirements.txt
+```
+
 ### Environment variables
 
 See `.env.example` for required variables.
