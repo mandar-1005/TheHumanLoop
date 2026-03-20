@@ -1,11 +1,16 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 
 from app.pipeline.grading_agent import GradingAgent
 from app.pipeline.rubric_engine import resolve_rubric, rubric_to_text
+
 from app.schemas.training import (
     GradeAssessmentRequest,
     RegradeRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FedRAMP Agents Service")
 
@@ -44,6 +49,21 @@ def _weighted_score_from_criteria(criterion_scores) -> float:
     return max(0.0, min(100.0, weighted / total_weight))
 
 
+def _empty_question_result(question, rubric_bundle=None):
+    return {
+        "question_id": question.question_id,
+        "score": 0,
+        "selected_answer": "",
+        "answer_key": question.answer_key or question.correct_answer or "",
+        "is_correct": False,
+        "feedback": "No answer submitted.",
+        "strengths": [],
+        "improvements": ["Submit an answer for this question."],
+        "criterion_scores": [],
+        "rubric": rubric_bundle,
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -54,28 +74,29 @@ def grade_assessment(payload: GradeAssessmentRequest):
     if not payload.questions:
         raise HTTPException(status_code=400, detail="questions cannot be empty")
 
+    answer_ids = {sa.question_id for sa in payload.selected_answers}
+    question_ids = {q.question_id for q in payload.questions}
+    unknown_ids = answer_ids - question_ids
+    if unknown_ids:
+        logger.warning("selected_answers reference unknown question_ids: %s", unknown_ids)
+
     grader = None
     graded_questions = []
     score_total = 0.0
 
     for question in payload.questions:
-        selected_answer = _find_selected_answer(payload.selected_answers, question.question_id)
+        rubric_bundle = resolve_rubric(
+            question.role, question.question_type, question.rubric or ""
+        )
+        threshold = float(rubric_bundle.get("passing_threshold", 70)) / 100.0
+
+        selected_answer = _find_selected_answer(
+            payload.selected_answers, question.question_id
+        )
         if not selected_answer:
-            graded_questions.append(
-                {
-                    "question_id": question.question_id,
-                    "score": 0,
-                    "selected_answer": "",
-                    "answer_key": question.answer_key or question.correct_answer or "",
-                    "is_correct": False,
-                    "feedback": "No answer submitted.",
-                    "strengths": [],
-                    "improvements": ["Submit an answer for this question."],
-                }
-            )
+            graded_questions.append(_empty_question_result(question, rubric_bundle))
             continue
 
-        rubric_bundle = resolve_rubric(question.role, question.question_type, question.rubric or "")
         rubric_text = rubric_to_text(rubric_bundle)
 
         answer_key = question.answer_key or question.correct_answer
@@ -91,9 +112,17 @@ def grade_assessment(payload: GradeAssessmentRequest):
 
         if question.question_type == "multiple_choice":
             score, is_correct = _grade_objective(selected_answer, answer_key)
-            feedback = "Correct answer." if is_correct else "Selected answer does not match answer key."
+            feedback = (
+                "Correct answer."
+                if is_correct
+                else "Selected answer does not match answer key."
+            )
             strengths = ["Matched expected answer."] if is_correct else []
-            improvements = [] if is_correct else ["Review the study guide and rationale for this control."]
+            improvements = (
+                []
+                if is_correct
+                else ["Review the study guide and rationale for this control."]
+            )
             criterion_scores = []
         else:
             if grader is None:
@@ -114,7 +143,7 @@ def grade_assessment(payload: GradeAssessmentRequest):
                 score = max(0.0, min(1.0, float(raw_score) / 100.0))
             except Exception:
                 score = 0.0
-            is_correct = score >= 0.7
+            is_correct = score >= threshold
             feedback = llm_grade.get("feedback", "")
             strengths = llm_grade.get("strengths", []) or []
             improvements = llm_grade.get("improvements", []) or []
@@ -149,23 +178,26 @@ def grade_assessment(payload: GradeAssessmentRequest):
 
 @app.post("/grading/regrade")
 def regrade_with_temperature(payload: RegradeRequest):
-    grader = GradingAgent()
     question = payload.question
-    rubric_bundle = resolve_rubric(question.role, question.question_type, question.rubric or "")
+    rubric_bundle = resolve_rubric(
+        question.role, question.question_type, question.rubric or ""
+    )
     rubric_text = rubric_to_text(rubric_bundle)
 
     answer_key = question.answer_key or question.correct_answer
-    if not answer_key:
-        key_result = grader.generate_answer_key(
-            prompt=question.prompt,
-            rubric=rubric_text,
-            temperature=0.2,
-        )
-        answer_key = key_result.get("answer_key", "")
 
     if question.question_type == "multiple_choice":
+        if not answer_key:
+            raise HTTPException(
+                status_code=400,
+                detail="answer_key or correct_answer required for multiple_choice regrade",
+            )
         score, is_correct = _grade_objective(payload.selected_answer, answer_key)
-        feedback = "Correct answer." if is_correct else "Selected answer does not match answer key."
+        feedback = (
+            "Correct answer."
+            if is_correct
+            else "Selected answer does not match answer key."
+        )
         return {
             "question_id": question.question_id,
             "temperature": payload.temperature,
@@ -173,7 +205,18 @@ def regrade_with_temperature(payload: RegradeRequest):
             "is_correct": is_correct,
             "answer_key": answer_key,
             "feedback": feedback,
+            "rubric": rubric_bundle,
         }
+
+    grader = GradingAgent()
+
+    if not answer_key:
+        key_result = grader.generate_answer_key(
+            prompt=question.prompt,
+            rubric=rubric_text,
+            temperature=0.2,
+        )
+        answer_key = key_result.get("answer_key", "")
 
     llm_grade = grader.grade_response(
         assessment_prompt=question.prompt,
@@ -186,6 +229,13 @@ def regrade_with_temperature(payload: RegradeRequest):
     weighted_score = _weighted_score_from_criteria(criterion_scores)
     if weighted_score >= 0:
         llm_grade["score"] = round(weighted_score, 2)
+
+    threshold = float(rubric_bundle.get("passing_threshold", 70))
+    try:
+        final_score = float(llm_grade.get("score", 0))
+    except Exception:
+        final_score = 0.0
+    llm_grade["is_correct"] = final_score >= threshold
 
     return {
         "question_id": question.question_id,

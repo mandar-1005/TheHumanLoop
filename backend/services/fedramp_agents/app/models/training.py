@@ -1,5 +1,13 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class CriterionScore:
+    criterion: str
+    weight: float
+    score: float
+    rationale: str = ""
 
 
 @dataclass
@@ -12,6 +20,8 @@ class QuestionGrade:
     feedback: str = ""
     strengths: List[str] = field(default_factory=list)
     improvements: List[str] = field(default_factory=list)
+    criterion_scores: List[CriterionScore] = field(default_factory=list)
+    rubric: Optional[Dict[str, Any]] = field(default=None)
 
 
 @dataclass
@@ -21,4 +31,3 @@ class GradeSummary:
     max_score: float
     percentage: float
     details: List[QuestionGrade]
-

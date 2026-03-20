@@ -1,4 +1,5 @@
 import json
+import re
 
 from app.pipeline.base_agent import BaseAgent
 
@@ -7,18 +8,17 @@ You are a FedRAMP compliance grading agent.
 
 Input:
 - Assessment prompt
-- Grading rubric
+- Grading rubric (with weighted criteria)
 - Employee response
 
 Task:
-1. Evaluate response against rubric.
-2. Provide:
-   - Score (0-100)
-   - Feedback
-   - Strengths
-   - Areas for Improvement
+1. Score EACH criterion from the rubric individually (0-100).
+2. Provide overall feedback, strengths, and areas for improvement.
+3. The "score" field should be your overall impression (0-100), but the
+   backend will recompute it from criterion_scores using the rubric weights
+   for consistency.
 
-Return JSON:
+Return STRICT JSON (no markdown fences, no extra text):
 {
   "score": 0,
   "feedback": "",
@@ -26,14 +26,39 @@ Return JSON:
   "improvements": [],
   "criterion_scores": [
     {
-      "criterion": "",
+      "criterion": "criterion name from rubric",
       "weight": 0.0,
       "score": 0,
-      "rationale": ""
+      "rationale": "why this score"
     }
   ]
 }
 """
+
+
+def _strip_json_fences(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*\n?", "", text)
+    text = re.sub(r"\n?```\s*$", "", text)
+    return text.strip()
+
+
+def _safe_parse_json(raw: str, fallback_keys: dict) -> dict:
+    cleaned = _strip_json_fences(raw)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r"\{[\s\S]*\}", cleaned)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError:
+            pass
+
+    return fallback_keys
+
 
 class GradingAgent(BaseAgent):
     def __init__(self):
@@ -41,7 +66,7 @@ class GradingAgent(BaseAgent):
 
     def generate_answer_key(self, prompt, rubric="", temperature=0.2):
         key_prompt = f"""
-Create an ideal answer key for this assessment question.
+Create an ideal answer key for this FedRAMP assessment question.
 
 Question:
 {prompt}
@@ -49,17 +74,14 @@ Question:
 Rubric:
 {rubric}
 
-Return STRICT JSON only:
+Return STRICT JSON only (no markdown fences):
 {{
-  "answer_key": "ideal answer",
-  "key_points": ["point 1", "point 2"]
+  "answer_key": "the ideal complete answer",
+  "key_points": ["point 1", "point 2", "point 3"]
 }}
 """
         raw = self.run(key_prompt, temperature=temperature)
-        try:
-            return json.loads(raw)
-        except Exception:
-            return {"answer_key": raw.strip(), "key_points": []}
+        return _safe_parse_json(raw, {"answer_key": raw.strip(), "key_points": []})
 
     def grade_response(
         self,
@@ -82,8 +104,12 @@ AI-generated answer key:
 Employee response:
 {employee_response}
 
-Evaluate against rubric and answer key.
-Return STRICT JSON:
+Instructions:
+- Score EACH criterion listed in the rubric individually (0-100).
+- Populate criterion_scores with the exact criterion names and weights from the rubric.
+- Provide overall feedback, strengths, and improvements.
+
+Return STRICT JSON (no markdown fences):
 {{
   "score": 0,
   "feedback": "",
@@ -91,21 +117,22 @@ Return STRICT JSON:
   "improvements": [],
   "criterion_scores": [
     {{
-      "criterion": "",
+      "criterion": "criterion name",
       "weight": 0.0,
       "score": 0,
-      "rationale": ""
+      "rationale": "brief justification"
     }}
   ]
 }}
 """
         raw = self.run(grade_prompt, temperature=temperature)
-        try:
-            return json.loads(raw)
-        except Exception:
-            return {
+        return _safe_parse_json(
+            raw,
+            {
                 "score": 0,
                 "feedback": raw.strip(),
                 "strengths": [],
                 "improvements": ["Could not parse model JSON output."],
-            }
+                "criterion_scores": [],
+            },
+        )

@@ -21,6 +21,7 @@ class BaseAgent:
             config=types.GenerateContentConfig(
                 system_instruction=self.system_instruction,
                 temperature=temperature,
+                response_mime_type="application/json",
             ),
         )
         return response.text

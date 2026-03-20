@@ -4,110 +4,106 @@ from typing import Dict, List
 ROLE_ALIASES = {
     "developer": "developer",
     "software developer": "developer",
+    "dev": "developer",
+    "engineer": "developer",
     "security lead": "security_lead",
     "security manager": "security_lead",
+    "security analyst": "security_lead",
     "development lead": "team_lead",
     "developer team lead": "team_lead",
     "team lead": "team_lead",
+    "tech lead": "team_lead",
+    "engineering manager": "team_lead",
     "compliance officer": "compliance_officer",
+    "auditor": "compliance_officer",
+    "compliance analyst": "compliance_officer",
     "other": "other",
 }
 
+PASSING_THRESHOLDS: Dict[str, float] = {
+    "developer": 70.0,
+    "security_lead": 75.0,
+    "team_lead": 75.0,
+    "compliance_officer": 80.0,
+    "other": 70.0,
+}
 
 DEFAULT_CRITERIA = {
-    "short_response": [
-        {"name": "Accuracy", "weight": 0.35},
-        {"name": "Control Alignment", "weight": 0.35},
-        {"name": "Clarity", "weight": 0.20},
-        {"name": "Completeness", "weight": 0.10},
-    ],
-    "case_study": [
-        {"name": "Risk Identification", "weight": 0.25},
-        {"name": "Control Application", "weight": 0.35},
-        {"name": "Decision Quality", "weight": 0.25},
-        {"name": "Evidence & Documentation", "weight": 0.15},
+    "descriptive": [
+        {"name": "Accuracy", "weight": 0.30},
+        {"name": "Control Alignment", "weight": 0.30},
+        {"name": "Practical Applicability", "weight": 0.20},
+        {"name": "Clarity & Completeness", "weight": 0.20},
     ],
 }
 
 
 ROLE_RUBRICS: Dict[str, Dict[str, Dict[str, object]]] = {
     "developer": {
-        "short_response": {
-            "description": "Evaluate whether the response applies FedRAMP controls in day-to-day engineering work.",
+        "descriptive": {
+            "description": (
+                "Evaluate whether the response demonstrates practical understanding "
+                "of FedRAMP controls in day-to-day engineering work, including secure "
+                "coding practices, access hygiene, and incident-level decision-making."
+            ),
             "criteria": [
-                {"name": "Secure Coding Control Fit", "weight": 0.40},
-                {"name": "Least-Privilege/Access Hygiene", "weight": 0.25},
-                {"name": "Implementation Specificity", "weight": 0.20},
+                {"name": "Secure Coding & Control Fit", "weight": 0.35},
+                {"name": "Least-Privilege / Access Hygiene", "weight": 0.25},
+                {"name": "Implementation Specificity", "weight": 0.25},
                 {"name": "Clarity", "weight": 0.15},
-            ],
-        },
-        "case_study": {
-            "description": "Evaluate practical incident and remediation decisions at engineer level.",
-            "criteria": [
-                {"name": "Threat/Risk Recognition", "weight": 0.30},
-                {"name": "Control-Driven Remediation", "weight": 0.35},
-                {"name": "Operational Feasibility", "weight": 0.20},
-                {"name": "Evidence Quality", "weight": 0.15},
             ],
         },
     },
     "security_lead": {
-        "short_response": {
-            "description": "Evaluate governance, monitoring, and control enforcement thinking.",
+        "descriptive": {
+            "description": (
+                "Evaluate governance thinking, monitoring strategy, control enforcement, "
+                "and risk-based decision-making appropriate for a security leader."
+            ),
             "criteria": [
-                {"name": "Policy/Control Accuracy", "weight": 0.30},
-                {"name": "Monitoring & Detection Strategy", "weight": 0.30},
+                {"name": "Policy / Control Accuracy", "weight": 0.30},
+                {"name": "Monitoring & Detection Strategy", "weight": 0.25},
                 {"name": "Risk Prioritization", "weight": 0.25},
-                {"name": "Communication Clarity", "weight": 0.15},
-            ],
-        },
-        "case_study": {
-            "description": "Evaluate security leadership decisions for high-impact scenarios.",
-            "criteria": [
-                {"name": "Risk Triage", "weight": 0.25},
-                {"name": "Control Selection & Justification", "weight": 0.30},
-                {"name": "Cross-Team Coordination", "weight": 0.25},
-                {"name": "Audit Readiness", "weight": 0.20},
+                {"name": "Communication Clarity", "weight": 0.20},
             ],
         },
     },
     "team_lead": {
-        "short_response": {
-            "description": "Evaluate execution planning and control adoption by engineering teams.",
+        "descriptive": {
+            "description": (
+                "Evaluate execution planning, team-level control adoption, and "
+                "leadership decisions that balance velocity, risk, and compliance."
+            ),
             "criteria": [
-                {"name": "Control-to-Execution Mapping", "weight": 0.35},
-                {"name": "Team Process Integration", "weight": 0.30},
-                {"name": "Priority/Tradeoff Judgement", "weight": 0.20},
-                {"name": "Clarity", "weight": 0.15},
-            ],
-        },
-        "case_study": {
-            "description": "Evaluate leadership decisions balancing velocity, risk, and compliance evidence.",
-            "criteria": [
-                {"name": "Scenario Diagnosis", "weight": 0.25},
-                {"name": "Decision Rationale", "weight": 0.30},
-                {"name": "Implementation Plan", "weight": 0.25},
-                {"name": "Evidence & Follow-up", "weight": 0.20},
+                {"name": "Control-to-Execution Mapping", "weight": 0.30},
+                {"name": "Team Process Integration", "weight": 0.25},
+                {"name": "Priority / Tradeoff Judgement", "weight": 0.25},
+                {"name": "Clarity", "weight": 0.20},
             ],
         },
     },
     "compliance_officer": {
-        "short_response": {
-            "description": "Evaluate understanding of FedRAMP evidence quality and control intent.",
+        "descriptive": {
+            "description": (
+                "Evaluate understanding of FedRAMP evidence quality, control intent, "
+                "audit readiness, and POA&M decision-making."
+            ),
             "criteria": [
-                {"name": "Control Interpretation", "weight": 0.35},
-                {"name": "Evidence Requirements", "weight": 0.30},
-                {"name": "Gap Identification", "weight": 0.20},
-                {"name": "Clarity", "weight": 0.15},
+                {"name": "Control Interpretation", "weight": 0.30},
+                {"name": "Evidence Requirements", "weight": 0.25},
+                {"name": "Gap / Risk Identification", "weight": 0.25},
+                {"name": "Clarity", "weight": 0.20},
             ],
         },
-        "case_study": {
-            "description": "Evaluate compliance decision-making for audits and POA&M actions.",
+    },
+    "other": {
+        "descriptive": {
+            "description": "Evaluate general FedRAMP awareness and control understanding.",
             "criteria": [
-                {"name": "Audit Impact Assessment", "weight": 0.25},
-                {"name": "Remediation Prioritization", "weight": 0.30},
-                {"name": "Evidence Plan", "weight": 0.25},
-                {"name": "Stakeholder Communication", "weight": 0.20},
+                {"name": "Accuracy", "weight": 0.30},
+                {"name": "Control Alignment", "weight": 0.30},
+                {"name": "Practical Applicability", "weight": 0.20},
+                {"name": "Clarity & Completeness", "weight": 0.20},
             ],
         },
     },
@@ -118,13 +114,30 @@ def canonical_role(role: str) -> str:
     return ROLE_ALIASES.get((role or "").strip().lower(), "other")
 
 
-def resolve_rubric(role: str, question_type: str, explicit_rubric: str = "") -> Dict[str, object]:
+def passing_threshold(role: str) -> float:
+    return PASSING_THRESHOLDS.get(canonical_role(role), 70.0)
+
+
+def validate_criteria_weights(criteria: List[Dict[str, object]]) -> bool:
+    if not criteria:
+        return True
+    total = sum(float(c.get("weight", 0)) for c in criteria)
+    return abs(total - 1.0) < 0.01
+
+
+def resolve_rubric(
+    role: str,
+    question_type: str,
+    explicit_rubric: str = "",
+) -> Dict[str, object]:
     if explicit_rubric:
+        criteria = DEFAULT_CRITERIA.get(question_type, [])
         return {
             "role": canonical_role(role),
             "question_type": question_type,
             "description": explicit_rubric,
-            "criteria": DEFAULT_CRITERIA.get(question_type, []),
+            "criteria": criteria,
+            "passing_threshold": passing_threshold(role),
             "source": "explicit",
         }
 
@@ -137,6 +150,7 @@ def resolve_rubric(role: str, question_type: str, explicit_rubric: str = "") -> 
             "question_type": question_type,
             "description": template["description"],
             "criteria": template["criteria"],
+            "passing_threshold": PASSING_THRESHOLDS.get(normalized_role, 70.0),
             "source": "template",
         }
 
@@ -145,6 +159,7 @@ def resolve_rubric(role: str, question_type: str, explicit_rubric: str = "") -> 
         "question_type": question_type,
         "description": "Evaluate response quality, FedRAMP relevance, and practical applicability.",
         "criteria": DEFAULT_CRITERIA.get(question_type, []),
+        "passing_threshold": PASSING_THRESHOLDS.get(normalized_role, 70.0),
         "source": "default",
     }
 
@@ -153,8 +168,15 @@ def rubric_to_text(rubric: Dict[str, object]) -> str:
     criteria: List[Dict[str, object]] = rubric.get("criteria", [])  # type: ignore[assignment]
     if not criteria:
         return str(rubric.get("description", ""))
-    lines = [f"Role: {rubric.get('role')}", f"Type: {rubric.get('question_type')}", str(rubric.get("description", "")), "Criteria:"]
+
+    lines = [
+        f"Role: {rubric.get('role')}",
+        f"Type: {rubric.get('question_type')}",
+        f"Passing threshold: {rubric.get('passing_threshold', 70)}%",
+        str(rubric.get("description", "")),
+        "",
+        "Criteria (score each criterion 0-100, then the weighted total is computed):",
+    ]
     for c in criteria:
         lines.append(f"- {c.get('name')}: weight {int(float(c.get('weight', 0)) * 100)}%")
     return "\n".join(lines)
-

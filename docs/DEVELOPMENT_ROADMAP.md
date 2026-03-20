@@ -37,8 +37,8 @@
 - [ ] Define **roles** (e.g. MARi’s 4: developers, security leads, developer team leads, + one); role metadata (name, level, Bloom’s target)
 - [ ] Build authoring UI: SSP input (upload PDF or “generate synthetic SSP” via Gemini), role list/config
 - [ ] Agent: generate **study guide** from SSP + FedRAMP docs, per role
-- [ ] Agent: generate **assessment** from study guide + role (format by Bloom’s: MC, short response, case study, flashcards)
-- [ ] Implement **AI grading** for case-study / short-response assessments
+- [ ] Agent: generate **assessment** from study guide + role (format by Bloom’s: quiz, descriptive)
+- [ ] Implement **AI grading** for descriptive assessments
 - [ ] Output: **training module** (study guide + assessment) per role; save and version
 
 ### File Upload & Processing
@@ -50,8 +50,8 @@
 
 ### Quizzes & Assessments (role-based)
 - [ ] Program Google ADK Agent for content + assessment generation
-- [ ] Support **assessment formats**: multiple choice, short response, case studies, flashcards
-- [ ] Map **role → format** (e.g. developers → MC; leads → case study, AI-graded)
+- [ ] Support **assessment formats**: multiple choice, descriptive answers
+- [ ] Map **role → format** (e.g. developers → quiz; leads → descriptive, AI-graded)
 - [ ] Design Quiz/Assessment component (format-aware display)
 - [ ] Create training module list (by role, by module)
 - [ ] Descriptive answers / study guide display

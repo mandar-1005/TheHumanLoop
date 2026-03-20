@@ -48,17 +48,17 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 ### 3. Roles (`roles`) – optional table or org config
 **Purpose**: Organization-defined roles (e.g. Developer, Security Lead, Developer Team Lead); used to select assessment format and Bloom’s level.
 
-**Columns** (if table): `id`, `organization_id` or `user_id`, `name`, `bloom_level` (e.g. 'remember', 'apply', 'create'), `assessment_format` (e.g. 'multiple_choice', 'case_study'), `created_at`, `updated_at`.
+**Columns** (if table): `id`, `organization_id` or `user_id`, `name`, `bloom_level` (e.g. 'remember', 'apply', 'create'), `assessment_format` (e.g. 'multiple_choice', 'descriptive'), `created_at`, `updated_at`.
 
 ### 4. Training modules (`training_modules`)
 **Purpose**: One generated training package per (SSP + role): study guide + assessment.
 
-**Columns**: `id`, `user_id`, `document_id` (SSP), `role_id` or `role_name`, `study_guide` (TEXT or JSONB), `assessment` (JSONB – items with format: mc, short_response, case_study, flashcard), `created_at`, `updated_at`.
+**Columns**: `id`, `user_id`, `document_id` (SSP), `role_id` or `role_name`, `study_guide` (TEXT or JSONB), `assessment` (JSONB – items with format: multiple_choice, descriptive), `created_at`, `updated_at`.
 
-### 5. Quizzes / Assessments (`flashcards` or `quizzes`)
-**Location**: `supabase/migrations/001_initial_schema/flashcards.sql` (or `quizzes.sql`)
+### 5. Quizzes / Assessments (`assessments` or `quizzes`)
+**Location**: `supabase/migrations/001_initial_schema/assessments.sql` (or `quizzes.sql`)
 
-**Purpose**: Store assessment items (MC, short response, case study, flashcards) with optional descriptive answers; link to training_module.
+**Purpose**: Store assessment items (quizzes and descriptive answers) with optional descriptive answers; link to training_module.
 
 **Columns**:
 - `id` (UUID, Primary Key)
@@ -67,7 +67,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 - `document_id` (UUID, Foreign Key -> documents, nullable)
 - `title` (TEXT)
 - `cards` (JSONB) - Array of items: question, answer, format_type
-- `format_type` (TEXT) - 'multiple_choice', 'short_response', 'case_study', 'flashcard', 'bullet', 'long-form'
+- `format_type` (TEXT) - 'multiple_choice', 'descriptive'
 - `folder_id` (UUID, Foreign Key -> folders, nullable)
 - `is_reviewed` (BOOLEAN) - Review queue status
 - `created_at` (TIMESTAMP)
@@ -122,7 +122,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 - `id` (UUID, Primary Key)
 - `user_id` (UUID, Foreign Key -> user_profiles)
 - `message_id` (UUID, Foreign Key -> chat_messages, nullable)
-- `flashcard_id` (UUID, Foreign Key -> flashcards, nullable)
+- `assessment_id` (UUID, Foreign Key -> assessments, nullable)
 - `feedback_type` (TEXT) - 'positive' or 'negative'
 - `positive_score` (INTEGER) - +1 or -1
 - `notes` (TEXT, nullable) - Optional feedback notes
@@ -135,7 +135,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 ### 9. Folders/Categories (`folders`)
 **Location**: `supabase/migrations/001_initial_schema/folders.sql`
 
-**Purpose**: Organize documents and flashcards into folders
+**Purpose**: Organize documents and assessments into folders
 
 **Columns**:
 - `id` (UUID, Primary Key)
@@ -180,7 +180,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 ### Policies Needed:
 1. **User Profiles**: Users can only read/update their own profile
 2. **Documents**: Users can only access their own documents
-3. **Flashcards**: Users can only access their own flashcards
+3. **Assessments**: Users can only access their own assessments
 4. **Chat Sessions**: Users can only access their own sessions
 5. **Chat Messages**: Users can only access messages in their own sessions
 6. **Feedback**: Users can only create/read their own feedback
@@ -191,7 +191,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 **Location**: `supabase/migrations/003_indexes/`
 
 ### Full-Text Search Indexes:
-- `flashcards` table: Search on title and card content
+- `assessments` table: Search on title and card content
 - `documents` table: Search on file_name and extracted_text
 
 ### Query Performance Indexes:
@@ -206,7 +206,7 @@ This document outlines the database tables needed for the **FedRAMP Training Cre
 ### Development Seed Data:
 - Test user accounts
 - Sample documents
-- Sample flashcards
+- Sample assessments
 - Sample chat sessions
 
 **Note**: Only use seed data in development environment
