@@ -1,10 +1,16 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
-import { LoginPage } from './pages/Login';
-import { RegistrationPage as Register } from './pages/Register';
-import { AccountPage } from './pages/Account';
-import { Dashboard } from './pages/Dashboard';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { LoginPage } from "./pages/Login";
+import { RegistrationPage as Register } from "./pages/Register";
+import { AccountPage } from "./pages/Account";
+import { Dashboard } from "./pages/Dashboard";
+import { TrainingModulesPage } from "./pages/TrainingModules";
 
 /**
  * MARi Main Application Entry
@@ -13,35 +19,52 @@ import { Dashboard } from './pages/Dashboard';
  */
 
 function App() {
-    return (
-        <AuthProvider>
-            <Router>
-                <Routes>
-                    {/* Redirect base URL to login */}
-                    <Route path="/" element={<Navigate to="/login" replace />} />
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          {/* Redirect base URL to login */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
 
-                    {/* Public routes */}
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/register" element={<Register />} />
+          {/* Public routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<Register />} />
 
-                    {/* Protected routes */}
-                    <Route path="/account" element={
-                        <ProtectedRoute>
-                            <AccountPage />
-                        </ProtectedRoute>
-                    } />
-                    <Route path="/dashboard" element={
-                        <ProtectedRoute>
-                            <Dashboard />
-                        </ProtectedRoute>
-                    } />
+          {/* Protected routes */}
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <AccountPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/training-modules"
+            element={
+              <ProtectedRoute>
+                <TrainingModulesPage />
+              </ProtectedRoute>
+            }
+          />
 
-                    {/* Catch-all route for 404s */}
-                    <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />
-                </Routes>
-            </Router>
-        </AuthProvider>
-    );
+          {/* Catch-all route for 404s */}
+          <Route
+            path="*"
+            element={<div className="p-10">404 - Page Not Found</div>}
+          />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
 }
 
 export default App;
