@@ -165,7 +165,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
         // Simulate AI grading based on rubric keywords
         setTimeout(() => {
             const lower = userAnswer.toLowerCase();
-            const rubric = (currentQuestion?.rubric || currentQuestion?.grading_rubric || '').toLowerCase();
+            const rubric = String(currentQuestion?.rubric || currentQuestion?.grading_rubric || '').toLowerCase();
             const keywords = rubric.match(/\b(validation|encoding|injection|encryption|authentication|authorization|least privilege|owasp|xss|sql|input|output|secure|remediat|isolat|contain|notif|document)\b/g) || [];
             const matched = keywords.filter(k => lower.includes(k));
             const ratio = keywords.length > 0 ? matched.length / keywords.length : 0;
