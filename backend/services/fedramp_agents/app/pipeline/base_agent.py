@@ -14,12 +14,13 @@ class BaseAgent:
         api_key = os.getenv("GOOGLE_API_KEY")
         self.client = genai.Client(api_key=api_key) if api_key else genai.Client()
 
-    def run(self, prompt):
+    def run(self, prompt, temperature=0.2):
         response = self.client.models.generate_content(
             model=self.model_name,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=self.system_instruction
+                system_instruction=self.system_instruction,
+                temperature=temperature,
             ),
         )
         return response.text
