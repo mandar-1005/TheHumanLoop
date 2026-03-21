@@ -11,7 +11,7 @@ def sanitize_text(value: str) -> str:
 @router.post("/create", response_model=CreateTrainingResponse)
 async def create_training_endpoint(
     role: str = Form(...),
-    company_id: int = Form(...),
+    company_id: str = Form(...),
     ssp_file: UploadFile = File(...),
 ):
     normalized_role = role.strip()

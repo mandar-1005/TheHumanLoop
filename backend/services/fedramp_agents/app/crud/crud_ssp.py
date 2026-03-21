@@ -1,6 +1,6 @@
 from app.database.supabase_client import supabase
 
-def insert_ssp(company_id: int, content: str) -> dict | None:
+def insert_ssp(company_id: str, content: str) -> dict | None:
     cleaned_content = content.replace("\x00", "")
     response = (
         supabase.table("ssps")

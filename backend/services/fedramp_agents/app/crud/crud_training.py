@@ -1,7 +1,7 @@
 from app.database.supabase_client import supabase
 
 
-def insert_training(company_id: int, role: str, training_json: str) -> dict | None:
+def insert_training(company_id: str, role: str, training_json: str) -> dict | None:
     response = (
         supabase.table("trainings")
         .insert(
