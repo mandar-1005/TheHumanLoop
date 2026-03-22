@@ -108,29 +108,18 @@ const trainingModules = [
     },
 ];
 
-const sspDocuments = [
-    {
-        id: 1,
-        name: 'SSP-2026-Q1-v2.3.pdf',
-        uploadedBy: 'Sarah Johnson',
-        date: 'Feb 25, 2026',
-        size: '2.4 MB'
-    },
-    {
-        id: 2,
-        name: 'Control-Baseline-Moderate.pdf',
-        uploadedBy: 'Michael Chen',
-        date: 'Feb 23, 2026',
-        size: '1.8 MB'
-    },
-    {
-        id: 3,
-        name: 'SSP-Appendix-A-Access.pdf',
-        uploadedBy: 'Alex Martinez',
-        date: 'Feb 20, 2026',
-        size: '890 KB'
-    },
-];
+interface SSPDocRow {
+    id: string;
+    file_name: string;
+    file_size: number;
+    created_at: string;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 const recentGenerations = [
     {
@@ -180,6 +169,9 @@ export function Dashboard() {
         role: string;
     } | null>(null);
 
+    const [recentSSPs, setRecentSSPs] = useState<SSPDocRow[]>([]);
+    const [sspLoading, setSSPLoading] = useState(true);
+
     useEffect(() => {
         if (user) {
             supabase
@@ -188,6 +180,17 @@ export function Dashboard() {
                 .eq('id', user.id)
                 .single()
                 .then(({ data }) => { if (data) setProfile(data); });
+
+            supabase
+                .from('ssp_documents')
+                .select('id, file_name, file_size, created_at')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false })
+                .limit(5)
+                .then(({ data }) => {
+                    setRecentSSPs((data ?? []) as SSPDocRow[]);
+                    setSSPLoading(false);
+                });
         }
     }, [user]);
 
@@ -260,8 +263,8 @@ export function Dashboard() {
                             <button
                                 key={item.label}
                                 onClick={() => {
-                                    if (item.href === '/training-modules') {
-                                        navigate('/training-modules');
+                                    if (item.href === '/training-modules' || item.href === '/ssp-documents') {
+                                        navigate(item.href);
                                         return;
                                     }
 
@@ -463,16 +466,31 @@ export function Dashboard() {
                                 <h3 className="text-lg font-semibold text-gray-900">Recent SSP Documents</h3>
                             </div>
                             <div className="p-6 space-y-4">
-                                {sspDocuments.map((doc) => (
+                                {sspLoading && (
+                                    <p className="text-sm text-gray-500">Loading documents...</p>
+                                )}
+                                {!sspLoading && recentSSPs.length === 0 && (
+                                    <div className="text-center py-4">
+                                        <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                                        <button
+                                            onClick={() => navigate('/ssp-documents')}
+                                            className="mt-2 text-xs font-medium text-[#1e3a5f] hover:underline"
+                                        >
+                                            Upload your first SSP
+                                        </button>
+                                    </div>
+                                )}
+                                {recentSSPs.map((doc) => (
                                     <div key={doc.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all">
                                         <div className="flex items-start gap-3">
                                             <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
                                                 <FileText className="w-5 h-5 text-blue-600" />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium text-gray-900">{doc.name}</p>
+                                                <p className="text-sm font-medium text-gray-900">{doc.file_name}</p>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    {doc.uploadedBy} · {doc.date} · {doc.size}
+                                                    {new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · {formatFileSize(doc.file_size)}
                                                 </p>
                                             </div>
                                         </div>
