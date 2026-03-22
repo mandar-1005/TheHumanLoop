@@ -23,7 +23,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-
+import { toast } from 'sonner';
 
 const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', active: true },
@@ -171,25 +171,79 @@ const fedRAMPCoverageData = [
 export function Dashboard() {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
+
     const [activeTab, setActiveTab] = useState('Developers');
     const tabs = ['Developers', 'Security Leads', 'Team Leads', 'Other'];
+
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newRole, setNewRole] = useState('');
+    const [sspFile, setSspFile] = useState<File | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
 
     const [profile, setProfile] = useState<{
         first_name: string;
         last_name: string;
         role: string;
+        organization_id: string;
     } | null>(null);
 
     useEffect(() => {
         if (user) {
             supabase
                 .from('profiles')
-                .select('first_name, last_name, role')
+                .select('first_name, last_name, role, organization_id')
                 .eq('id', user.id)
                 .single()
-                .then(({ data }) => { if (data) setProfile(data); });
+                .then(({ data }) => {
+                    if (data) setProfile(data);
+                });
         }
     }, [user]);
+
+    const handleCreateTraining = async () => {
+        if (!newRole.trim()) {
+            toast.error('Please enter a role.');
+            return;
+        }
+
+        if (!sspFile) {
+            toast.error('Please upload an SSP file.');
+            return;
+        }
+
+        if (!profile?.organization_id) {
+            toast.error('No organization id found for this user profile.');
+            return;
+        }
+
+        setIsCreating(true);
+        try {
+            const formData = new FormData();
+            formData.append('role', newRole.trim());
+            formData.append('company_id', profile.organization_id);
+            formData.append('ssp_file', sspFile);
+
+            const response = await fetch('http://127.0.0.1:8000/api/trainings/create', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data?.detail || 'Failed to create training.');
+            }
+
+            toast.success('Training added to Training Modules.');
+            setShowCreateModal(false);
+            setNewRole('');
+            setSspFile(null);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Unexpected error.');
+        } finally {
+            setIsCreating(false);
+        }
+    };
 
     const displayName = profile
         ? `${profile.first_name} ${profile.last_name}`
@@ -240,10 +294,8 @@ export function Dashboard() {
 
     return (
         <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-            {/* Sidebar */}
             <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 z-10">
                 <div className="p-6">
-                    {/* Logo */}
                     <div className="flex items-center gap-3 mb-10">
                         <div className="w-10 h-10 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
                             <Shield className="w-6 h-6 text-white" />
@@ -254,7 +306,6 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* Navigation */}
                     <nav className="space-y-1">
                         {navItems.map((item) => (
                             <button
@@ -282,7 +333,6 @@ export function Dashboard() {
                     </nav>
                 </div>
 
-                {/* Bottom section */}
                 <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
                     <button
                         onClick={signOut}
@@ -298,9 +348,7 @@ export function Dashboard() {
                 </div>
             </aside>
 
-            {/* Main Content */}
             <div className="ml-64">
-                {/* Header */}
                 <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
                     <div className="px-8 py-4">
                         <div className="flex items-center justify-between">
@@ -310,7 +358,6 @@ export function Dashboard() {
                             </div>
 
                             <div className="flex items-center gap-4">
-                                {/* Search */}
                                 <div className="relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
@@ -320,13 +367,11 @@ export function Dashboard() {
                                     />
                                 </div>
 
-                                {/* Notifications */}
                                 <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
                                     <Bell className="w-5 h-5 text-gray-600" />
                                     <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
                                 </button>
 
-                                {/* User */}
                                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                                     <div className="text-right">
                                         <p className="text-sm font-medium text-gray-900">{displayName}</p>
@@ -341,9 +386,7 @@ export function Dashboard() {
                     </div>
                 </header>
 
-                {/* Dashboard Content */}
                 <main className="p-8 space-y-8">
-                    {/* Key Metrics */}
                     <div className="grid grid-cols-4 gap-6">
                         {metricsData.map((metric, index) => (
                             <div key={index} className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow">
@@ -356,16 +399,16 @@ export function Dashboard() {
                                 <div className="space-y-2">
                                     <p className="text-3xl font-bold text-gray-900">{metric.value}</p>
                                     <div className="flex items-center gap-2">
-                    <span className={`flex items-center gap-1 text-sm font-medium ${
-                        metric.trending === 'up' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {metric.trending === 'up' ? (
-                          <TrendingUp className="w-4 h-4" />
-                      ) : (
-                          <TrendingDown className="w-4 h-4" />
-                      )}
-                        {metric.change}
-                    </span>
+                                        <span className={`flex items-center gap-1 text-sm font-medium ${
+                                            metric.trending === 'up' ? 'text-green-600' : 'text-red-600'
+                                        }`}>
+                                            {metric.trending === 'up' ? (
+                                                <TrendingUp className="w-4 h-4" />
+                                            ) : (
+                                                <TrendingDown className="w-4 h-4" />
+                                            )}
+                                            {metric.change}
+                                        </span>
                                         <span className="text-sm text-gray-500">{metric.subtitle}</span>
                                     </div>
                                 </div>
@@ -373,18 +416,19 @@ export function Dashboard() {
                         ))}
                     </div>
 
-                    {/* Training Modules by Role */}
                     <div className="bg-white rounded-xl border border-gray-200">
                         <div className="p-6 border-b border-gray-200">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-semibold text-gray-900">Training Modules by Role</h3>
-                                <button className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] transition-colors">
+                                <button
+                                    onClick={() => setShowCreateModal(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] transition-colors"
+                                >
                                     <Plus className="w-4 h-4" />
                                     Create New Training Module
                                 </button>
                             </div>
 
-                            {/* Tabs */}
                             <div className="flex gap-2">
                                 {tabs.map((tab) => (
                                     <button
@@ -402,62 +446,59 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        {/* Table */}
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
-                                </tr>
+                                    <tr>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
+                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
+                                    </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                {trainingModules.map((module) => (
-                                    <tr key={module.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4">
-                                            <p className="text-sm font-medium text-gray-900">{module.name}</p>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm text-gray-600">{module.role}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(module.status)}`}>
-                          {module.status}
-                        </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-[#1e3a5f] rounded-full"
-                                                        style={{ width: `${module.completion}%` }}
-                                                    />
+                                    {trainingModules.map((module) => (
+                                        <tr key={module.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4">
+                                                <p className="text-sm font-medium text-gray-900">{module.name}</p>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-gray-600">{module.role}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(module.status)}`}>
+                                                    {module.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-[#1e3a5f] rounded-full"
+                                                            style={{ width: `${module.completion}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-sm text-gray-600">{module.completion}%</span>
                                                 </div>
-                                                <span className="text-sm text-gray-600">{module.completion}%</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="text-sm text-gray-600">{module.lastUpdated}</span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <button className="text-gray-400 hover:text-gray-600">
-                                                <MoreVertical className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-sm text-gray-600">{module.lastUpdated}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button className="text-gray-400 hover:text-gray-600">
+                                                    <MoreVertical className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    {/* SSP Documents & Recent Generations */}
                     <div className="grid grid-cols-2 gap-6">
-                        {/* Recent SSP Documents */}
                         <div className="bg-white rounded-xl border border-gray-200">
                             <div className="p-6 border-b border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-900">Recent SSP Documents</h3>
@@ -484,7 +525,6 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        {/* Recent Generations */}
                         <div className="bg-white rounded-xl border border-gray-200">
                             <div className="p-6 border-b border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-900">Recent Generations</h3>
@@ -499,9 +539,9 @@ export function Dashboard() {
                                             <div className="flex-1">
                                                 <p className="text-sm font-medium text-gray-900">{gen.title}</p>
                                                 <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded ${getGenerationStatusColor(gen.status)}`}>
-                            {gen.status}
-                          </span>
+                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${getGenerationStatusColor(gen.status)}`}>
+                                                        {gen.status}
+                                                    </span>
                                                     <span className="text-xs text-gray-500">{gen.timestamp}</span>
                                                 </div>
                                             </div>
@@ -515,7 +555,6 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* FedRAMP Coverage */}
                     <div className="bg-white rounded-xl border border-gray-200">
                         <div className="p-6 border-b border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-900">FedRAMP Coverage by Control Family</h3>
@@ -552,6 +591,47 @@ export function Dashboard() {
                     </div>
                 </main>
             </div>
+
+            {showCreateModal && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Training Module</h3>
+
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                        <input
+                            value={newRole}
+                            onChange={(e) => setNewRole(e.target.value)}
+                            placeholder="Software Developer"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4"
+                        />
+
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Upload SSP</label>
+                        <input
+                            type="file"
+                            accept=".txt,.pdf"
+                            onChange={(e) => setSspFile(e.target.files?.[0] ?? null)}
+                            className="w-full mb-6"
+                        />
+
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowCreateModal(false)}
+                                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700"
+                                disabled={isCreating}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateTraining}
+                                className="px-4 py-2 rounded-lg bg-[#1e3a5f] text-white disabled:opacity-60"
+                                disabled={isCreating}
+                            >
+                                {isCreating ? 'Creating...' : 'Create'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
