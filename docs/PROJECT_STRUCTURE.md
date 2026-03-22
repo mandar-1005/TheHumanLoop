@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document explains where to place different types of files and code. **Product context:** FedRAMP Training Creator – companies create trainings from **SSP + roles**; output is **training module** (study guide + **role-based assessment**: MC, short response, case study, flashcards; see [PRODUCT_VISION.md](./PRODUCT_VISION.md)).
+This document explains where to place different types of files and code. **Product context:** FedRAMP Training Creator – companies create trainings from **SSP + roles**; output is **training module** (study guide + **role-based assessment**: quiz, descriptive; see [PRODUCT_VISION.md](./PRODUCT_VISION.md)).
 
 ## Frontend Structure (`frontend/src/`)
 

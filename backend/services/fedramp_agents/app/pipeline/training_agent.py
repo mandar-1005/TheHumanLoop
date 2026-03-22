@@ -21,14 +21,8 @@ Output:
 If multiple choice:
     questions must include options and correct_answer.
 
-If case study:
-    include scenario + grading rubric.
-
-If short response:
-    include prompt + rubric.
-
-If flashcards:
-    include term + definition.
+If descriptive:
+    include prompt + grading rubric.
 """
 
 class TrainingAgent(BaseAgent):

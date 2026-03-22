@@ -55,20 +55,18 @@ Assessment **format and cognitive level** depend on the role:
 | Role / level | Cognitive level | Example assessment format |
 |--------------|-----------------|---------------------------|
 | **Developers** | Remembering / understanding | **Multiple choice** – “know how to follow FedRAMP” |
-| **Higher level (e.g. dev lead)** | Applying / creating | **Case study** – scenario-based; **AI-graded** |
-| (Other roles) | Varies | **Short response**, **flashcards**, **MC**, **case studies** as appropriate |
+| **Higher level (e.g. dev lead)** | Applying / creating | **Descriptive** – written answers; **AI-graded** |
+| (Other roles) | Varies | **Quiz** or **descriptive** as appropriate |
 
-So: **remembering** → MC/flashcards; **applying** → short response / scenarios; **creating** → case studies, AI grading. This is the “change format by role” idea.
+So: **remembering** → quiz (MC); **applying/creating** → descriptive, AI grading. This is the “change format by role” idea.
 
 ---
 
 ## Assessment formats in scope
 
 - Multiple choice
-- Short response
-- Case studies (AI-graded)
-- Flashcards (for recall)
-
+- Descriptive answers (AI-graded)
+- 
 Format chosen per role to match Bloom’s level and learning goals.
 
 ---
@@ -94,7 +92,7 @@ Format chosen per role to match Bloom’s level and learning goals.
 ## Alignment with existing docs
 
 - **Auth / roles:** Can stay “MARi employees” for the **creators** (e.g. L&D, compliance) and/or **learners** (developers, security leads, etc.); clarify in UX who is “creating” vs “taking” training.
-- **Content:** “Quizzes” and “descriptive answers” still apply; add **study guide**, **MC**, **short response**, **case studies**, **flashcards**, and **AI grading** where relevant.
-- **Agents:** Used to create role-specific training from FedRAMP/SSP docs and to grade case studies.
+- **Content:** “Quizzes” and “descriptive answers” still apply; add **study guide**, **quizzes**, **descriptive answers**, and **AI grading** where relevant.
+- **Agents:** Used to create role-specific training from FedRAMP/SSP docs and to grade descriptive answers.
 
 All product and roadmap docs should treat this as: **company-facing FedRAMP training creator**, **SSP + roles in**, **training module (study guide + role-based assessment) out**, with **Bloom’s-driven assessment by role**.

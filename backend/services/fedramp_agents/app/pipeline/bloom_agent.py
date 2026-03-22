@@ -16,9 +16,8 @@ Task:
 2. Assign the appropriate Bloom's taxonomy level.
 3. Map level to assessment format:
 
-Remembering/Understanding -> Multiple Choice or Flashcards
-Applying/Analyzing -> Short Response
-Evaluating/Creating -> Case Study
+Remembering/Understanding -> Multiple Choice
+Applying/Analyzing/Evaluating/Creating -> Descriptive
 
 Return structured JSON:
 
