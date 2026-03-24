@@ -1,3 +1,11 @@
+from typing import Any
+from pydantic import BaseModel
+
+
+class CreateTrainingResponse(BaseModel):
+    success: bool
+    message: str
+    result: dict[str, Any]
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
