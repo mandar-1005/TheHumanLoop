@@ -1,9 +1,19 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+import logging
 from fastapi.middleware.cors import CORSMiddleware
+from app.pipeline.grading_agent import GradingAgent
+from app.pipeline.rubric_engine import resolve_rubric, rubric_to_text
 
+from app.schemas.training import (
+    GradeAssessmentRequest,
+    RegradeRequest,
+)
 from app.endpoints.trainings import router as trainings_router
 
-app = FastAPI(title="FedRAMP Training API")
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="FedRAMP Agents Service")
+app.include_router(trainings_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,24 +30,6 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict[str, bool]:
     return {"ok": True}
-
-
-app.include_router(trainings_router)
-import logging
-
-from fastapi import FastAPI, HTTPException
-
-from app.pipeline.grading_agent import GradingAgent
-from app.pipeline.rubric_engine import resolve_rubric, rubric_to_text
-
-from app.schemas.training import (
-    GradeAssessmentRequest,
-    RegradeRequest,
-)
-
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title="FedRAMP Agents Service")
 
 
 def _normalize(text: str) -> str:
@@ -87,11 +79,6 @@ def _empty_question_result(question, rubric_bundle=None):
         "criterion_scores": [],
         "rubric": rubric_bundle,
     }
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
 
 @app.post("/grading/grade")
