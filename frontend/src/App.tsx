@@ -11,6 +11,7 @@ import { RegistrationPage as Register } from "./pages/Register";
 import { AccountPage } from "./pages/Account";
 import { Dashboard } from "./pages/Dashboard";
 import { TrainingModulesPage } from "./pages/TrainingModules";
+import { SSPDocumentsPage } from "./pages/SSPDocuments";
 
 /**
  * MARi Main Application Entry
@@ -52,6 +53,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <TrainingModulesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ssp-documents"
+            element={
+              <ProtectedRoute>
+                <SSPDocumentsPage />
               </ProtectedRoute>
             }
           />

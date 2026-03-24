@@ -451,7 +451,7 @@ function Sidebar() {
     const navItems = [
         { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
         { icon: BookOpen, label: 'Training Modules', href: '/training-modules' },
-        { icon: FileText, label: 'SSP Documents', href: null },
+        { icon: FileText, label: 'SSP Documents', href: '/ssp-documents' },
         { icon: Users, label: 'Roles & Assessments', href: null },
         { icon: BarChart3, label: 'Analytics', href: null },
         { icon: Settings, label: 'Settings', href: null },
