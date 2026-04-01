@@ -73,11 +73,24 @@ function parseTrainingJson(raw: unknown): TrainingContent[] {
 
 function mapTraining(row: TrainingRow): TrainingModule {
     const contents = parseTrainingJson(row.training_json);
+
+    // Formatting the date to include time (e.g., Mar 24, 2026, 2:15 PM)
+    const formattedDate = row.created_at
+        ? new Date(row.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        })
+        : 'Unknown';
+
     return {
         id: String(row.id),
         role: row.company_role || 'Other',
         status: 'Published',
-        createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown',
+        createdAt: formattedDate,
         contents,
     };
 }
