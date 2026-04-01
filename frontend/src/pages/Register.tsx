@@ -40,11 +40,10 @@ export function RegistrationPage() {
     const validateEmail = (email: string) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const isValid = emailRegex.test(email);
-        const isCompanyEmail = !email.match(/@(gmail|yahoo|hotmail|outlook)\.com$/i);
 
         if (!email) return { isValid: false, message: 'Email is required' };
         if (!isValid) return { isValid: false, message: 'Invalid email format' };
-        if (!isCompanyEmail) return { isValid: false, message: 'Please use a company email' };
+
         return { isValid: true, message: '' };
     };
 
@@ -328,7 +327,7 @@ export function RegistrationPage() {
                                     }`}
                                     placeholder="john.doe@company.com"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Company email only</p>
+                                <p className="text-xs text-gray-500 mt-1">Please enter your preferred email address</p>
                                 {touched.email && validationState.email && !validationState.email.isValid && (
                                     <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                                         <AlertCircle className="w-3 h-3" />
