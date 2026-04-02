@@ -337,7 +337,7 @@ export function Dashboard() {
                             <button
                                 key={item.label}
                                 onClick={() => {
-                                    if (item.href === '/training-modules' || item.href === '/ssp-documents' || item.href === '/roles') {
+                                    if (item.href === '/training-modules' || item.href === '/ssp-documents' || item.href === '/roles' || item.href === '/settings') {
                                         navigate(item.href);
                                         return;
                                     }

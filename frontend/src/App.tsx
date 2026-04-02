@@ -10,9 +10,7 @@ import { TrainingModulesPage } from './pages/TrainingModules';
 import { SSPDocumentsPage } from './pages/SSPDocuments';
 import { MyTrainingPage } from './pages/MyTraining';
 import { RolesAssessmentsPage } from './pages/RoleAssessments';
-
-
-
+import { SettingsPage } from './pages/Settings';
 
 function App() {
     return (
@@ -42,9 +40,18 @@ function App() {
                         <ProtectedRoute><RoleGuard requireAdmin><RolesAssessmentsPage /></RoleGuard></ProtectedRoute>
                     } />
 
-                    {/* Employee-only — admins get bounced to dashboard */}
+                    {/* Employee-only — admins get redirected to /dashboard */}
                     <Route path="/my-training" element={
-                        <ProtectedRoute><RoleGuard requireEmployee><MyTrainingPage /></RoleGuard></ProtectedRoute>
+                        <ProtectedRoute>
+                            <RoleGuard requireAdmin={false} redirectAdminTo="/dashboard">
+                                <MyTrainingPage />
+                            </RoleGuard>
+                        </ProtectedRoute>
+                    } />
+
+                    {/* All authenticated users */}
+                    <Route path="/settings" element={
+                        <ProtectedRoute><SettingsPage /></ProtectedRoute>
                     } />
 
                     <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />

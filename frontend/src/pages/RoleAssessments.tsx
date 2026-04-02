@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     LayoutDashboard, BookOpen, FileText, Users,
     BarChart3, Settings, Shield, LogOut,
@@ -133,7 +133,6 @@ function AssignModal({
         setError(null);
 
         try {
-            // Remove deselected assignments
             const toRemove = existingAssignments.filter(id => !selected.includes(id));
             if (toRemove.length > 0) {
                 const { error: removeError } = await supabase
@@ -144,7 +143,6 @@ function AssignModal({
                 if (removeError) throw removeError;
             }
 
-            // Add new assignments
             const toAdd = selected.filter(id => !existingAssignments.includes(id));
             if (toAdd.length > 0) {
                 const { error: addError } = await supabase
@@ -173,7 +171,6 @@ function AssignModal({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
-                {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <div>
                         <h2 className="text-lg font-semibold text-gray-900">Assign Assessments</h2>
@@ -186,7 +183,6 @@ function AssignModal({
                     </button>
                 </div>
 
-                {/* Training list */}
                 <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
                     {trainings.length === 0 ? (
                         <p className="text-sm text-gray-500 text-center py-4">
@@ -232,7 +228,6 @@ function AssignModal({
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
                     <p className="text-xs text-gray-500">{selected.length} training(s) selected</p>
                     <div className="flex gap-3">
@@ -267,60 +262,152 @@ function RoleDropdown({
     onRoleChanged: (id: string, newRole: string) => void;
 }) {
     const [open, setOpen] = useState(false);
+    const [pendingRole, setPendingRole] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
-    const handleSelect = async (role: string) => {
+    const displayRole = pendingRole ?? employee.role;
+    const isDirty = pendingRole !== null && pendingRole !== employee.role;
+
+    const handleOpen = () => {
+        if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            setDropdownStyle({
+                position: 'fixed',
+                top: rect.bottom + 4,
+                left: rect.left,
+                width: 192,
+                zIndex: 9999,
+            });
+        }
+        setOpen(o => !o);
+        setSaveError(null);
+    };
+
+    const handleSelect = (role: string) => {
         setOpen(false);
-        if (role === employee.role) return;
+        setPendingRole(role);
+        setSaveError(null);
+        setSaved(false);
+    };
+
+    const handleSave = async () => {
+        if (!pendingRole || pendingRole === employee.role) return;
         setSaving(true);
+        setSaveError(null);
 
         const { error } = await supabase
             .from('profiles')
-            .update({ role })
+            .update({ role: pendingRole })
             .eq('id', employee.id);
 
-        if (!error) onRoleChanged(employee.id, role);
+        if (error) {
+            setSaveError('Permission denied. Add an admin UPDATE policy in Supabase.');
+            console.error('Role update error:', error.message);
+        } else {
+            onRoleChanged(employee.id, pendingRole);
+            setPendingRole(null);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        }
         setSaving(false);
     };
 
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setOpen(!open)}
-                disabled={saving}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:border-gray-400 transition-colors disabled:opacity-50 min-w-36"
-            >
-                {saving ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
-                ) : (
-                    <UserCog className="w-3.5 h-3.5 text-gray-400" />
-                )}
-                <span className="flex-1 text-left capitalize">{employee.role.replace('-', ' ')}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-            </button>
+    const handleCancel = () => {
+        setPendingRole(null);
+        setSaveError(null);
+        setSaved(false);
+    };
 
-            {open && (
-                <>
-                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                    <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
-                        {JOB_ROLES.map(role => (
-                            <button
-                                key={role}
-                                onClick={() => handleSelect(role)}
-                                className={`w-full text-left px-4 py-2 text-sm capitalize transition-colors ${
-                                    role === employee.role
-                                        ? 'bg-blue-50 text-[#1e3a5f] font-medium'
-                                        : 'text-gray-700 hover:bg-gray-50'
-                                }`}
-                            >
-                                {role.replace('-', ' ')}
-                                {role === employee.role && (
-                                    <CheckCircle className="w-3.5 h-3.5 inline ml-2 text-[#1e3a5f]" />
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                </>
+    return (
+        <div className="flex items-center gap-2">
+            <div className="relative">
+                <button
+                    ref={buttonRef}
+                    onClick={handleOpen}
+                    disabled={saving}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm border rounded-lg transition-colors disabled:opacity-50 min-w-36 ${
+                        isDirty
+                            ? 'border-amber-400 bg-amber-50 text-amber-800'
+                            : saved
+                                ? 'border-green-400 bg-green-50 text-green-800'
+                                : 'border-gray-300 hover:border-gray-400 text-gray-700'
+                    }`}
+                >
+                    {saving ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                    ) : saved ? (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                    ) : (
+                        <UserCog className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                    <span className="flex-1 text-left capitalize">{displayRole.replace(/-/g, ' ')}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                </button>
+
+                {open && (
+                    <>
+                        <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+                        <div
+                            style={dropdownStyle}
+                            className="bg-white border border-gray-200 rounded-lg shadow-lg py-1"
+                        >
+                            {JOB_ROLES.map(role => (
+                                <button
+                                    key={role}
+                                    onClick={() => handleSelect(role)}
+                                    className={`w-full text-left px-4 py-2 text-sm capitalize transition-colors flex items-center justify-between ${
+                                        role === displayRole
+                                            ? 'bg-blue-50 text-[#1e3a5f] font-medium'
+                                            : 'text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {role.replace(/-/g, ' ')}
+                                    {role === displayRole && (
+                                        <CheckCircle className="w-3.5 h-3.5 text-[#1e3a5f]" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {isDirty && (
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-[#1e3a5f] rounded-lg hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                    >
+                        {saving
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <CheckCircle className="w-3 h-3" />
+                        }
+                        Save
+                    </button>
+                    <button
+                        onClick={handleCancel}
+                        disabled={saving}
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Cancel"
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            )}
+
+            {saved && (
+                <span className="text-xs font-medium text-green-600 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" /> Saved
+                </span>
+            )}
+
+            {saveError && (
+                <span className="text-xs text-red-500 max-w-xs leading-tight">{saveError}</span>
             )}
         </div>
     );
@@ -351,26 +438,21 @@ export function RolesAssessmentsPage() {
             .neq('id', user!.id);
 
         console.log('empData:', empData);
-        console.log('empError:', empError);  // <-- add this if not already there
+        console.log('empError:', empError);
         console.log('org being queried:', profile!.organization_id);
 
-        // Get emails from auth.users via a join — use the profiles view
         const ids = (empData ?? []).map(e => e.id);
         let emailMap: Record<string, string> = {};
 
         if (ids.length > 0) {
-            // Fetch emails via RPC or fallback to empty
             try {
                 const { data: userData } = await supabase.rpc('get_user_emails', { user_ids: ids }) as
                     { data: { id: string; email: string }[] | null };
-
                 if (userData) {
-                    emailMap = Object.fromEntries(
-                        userData.map(u => [u.id, u.email])
-                    );
+                    emailMap = Object.fromEntries(userData.map(u => [u.id, u.email]));
                 }
             } catch {
-                // RPC unavailable — emailMap stays empty, emails will show as '—'
+                // RPC unavailable — emails will show as '—'
             }
         }
 
@@ -381,7 +463,6 @@ export function RolesAssessmentsPage() {
 
         setEmployees(mapped);
 
-        // Load all trainings for this org
         const { data: trainingData } = await supabase
             .from('trainings')
             .select('id, company_role, created_at')
@@ -390,7 +471,6 @@ export function RolesAssessmentsPage() {
 
         setTrainings((trainingData ?? []) as Training[]);
 
-        // Load all assignments for this org
         const { data: assignData } = await supabase
             .from('assignments')
             .select('user_id, training_id')
@@ -423,7 +503,6 @@ export function RolesAssessmentsPage() {
         <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
             <Sidebar />
             <div className="ml-64">
-                {/* Header */}
                 <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
                     <div className="px-8 py-4 flex items-center justify-between">
                         <div>
@@ -436,7 +515,6 @@ export function RolesAssessmentsPage() {
                 </header>
 
                 <main className="p-8 space-y-6">
-                    {/* Summary cards */}
                     <div className="grid grid-cols-3 gap-6">
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
                             <p className="text-sm text-gray-600">Total Employees</p>
@@ -452,9 +530,8 @@ export function RolesAssessmentsPage() {
                         </div>
                     </div>
 
-                    {/* Employee table */}
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                        {/* Table header */}
+                    {/* Table — overflow visible so dropdowns escape the container */}
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-visible">
                         <div className="p-6 border-b border-gray-200 flex items-center justify-between gap-4">
                             <h3 className="text-lg font-semibold text-gray-900">Employees</h3>
                             <div className="relative w-72">
@@ -469,93 +546,84 @@ export function RolesAssessmentsPage() {
                             </div>
                         </div>
 
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Employee</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Email</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
-                            </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                            {loading && (
+                        {/* Inner table wrapper — overflow-x-auto but NOT overflow-hidden */}
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center">
-                                        <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
-                                        <p className="text-sm text-gray-500">Loading employees...</p>
-                                    </td>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Employee</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Email</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
                                 </tr>
-                            )}
-                            {!loading && filtered.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center">
-                                        <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                                        <p className="text-sm text-gray-500 font-medium">
-                                            {search ? 'No employees match your search' : 'No employees in your organization yet'}
-                                        </p>
-                                    </td>
-                                </tr>
-                            )}
-                            {!loading && filtered.map(emp => (
-                                <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                                    {/* Employee */}
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-full bg-[#1e3a5f] flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                                                {initials(emp)}
-                                            </div>
-                                            <div>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                {loading && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center">
+                                            <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
+                                            <p className="text-sm text-gray-500">Loading employees...</p>
+                                        </td>
+                                    </tr>
+                                )}
+                                {!loading && filtered.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-12 text-center">
+                                            <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                                            <p className="text-sm text-gray-500 font-medium">
+                                                {search ? 'No employees match your search' : 'No employees in your organization yet'}
+                                            </p>
+                                        </td>
+                                    </tr>
+                                )}
+                                {!loading && filtered.map(emp => (
+                                    <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-full bg-[#1e3a5f] flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                                                    {initials(emp)}
+                                                </div>
                                                 <p className="text-sm font-medium text-gray-900">
                                                     {emp.first_name} {emp.last_name}
                                                 </p>
                                             </div>
-                                        </div>
-                                    </td>
-
-                                    {/* Email */}
-                                    <td className="px-6 py-4 text-sm text-gray-600">{emp.email}</td>
-
-                                    {/* Role dropdown */}
-                                    <td className="px-6 py-4">
-                                        <RoleDropdown
-                                            employee={emp}
-                                            onRoleChanged={handleRoleChanged}
-                                        />
-                                    </td>
-
-                                    {/* Assignment count */}
-                                    <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                getAssignmentCount(emp.id) > 0
-                                                    ? 'bg-blue-100 text-blue-700'
-                                                    : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                                <BookMarked className="w-3 h-3" />
-                                                {getAssignmentCount(emp.id)} training{getAssignmentCount(emp.id) !== 1 ? 's' : ''}
-                                            </span>
-                                    </td>
-
-                                    {/* Assign button */}
-                                    <td className="px-6 py-4">
-                                        <button
-                                            onClick={() => setAssignTarget(emp)}
-                                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors"
-                                        >
-                                            <BookMarked className="w-3.5 h-3.5" />
-                                            Assign Training
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-600">{emp.email}</td>
+                                        <td className="px-6 py-4">
+                                            <RoleDropdown
+                                                employee={emp}
+                                                onRoleChanged={handleRoleChanged}
+                                            />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                    getAssignmentCount(emp.id) > 0
+                                                        ? 'bg-blue-100 text-blue-700'
+                                                        : 'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    <BookMarked className="w-3 h-3" />
+                                                    {getAssignmentCount(emp.id)} training{getAssignmentCount(emp.id) !== 1 ? 's' : ''}
+                                                </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button
+                                                onClick={() => setAssignTarget(emp)}
+                                                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors"
+                                            >
+                                                <BookMarked className="w-3.5 h-3.5" />
+                                                Assign Training
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </main>
             </div>
 
-            {/* Assign modal */}
             {assignTarget && (
                 <AssignModal
                     employee={assignTarget}

@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import {
-    Shield, LogOut, BookOpen, BarChart3, Loader2, ChevronRight,
-    ChevronLeft, CreditCard, FileText, CheckCircle, AlertCircle,
-    XCircle, RotateCw, RefreshCw, Sparkles
+    Shield, LogOut, BookOpen,
+    BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
+    CreditCard, FileText, CheckCircle, AlertCircle,
+    XCircle, RotateCw, RefreshCw, Sparkles,
 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface AssignedTraining {
     id: string;
@@ -17,12 +18,12 @@ interface AssignedTraining {
     training: {
         id: number;
         company_role: string;
-        training_json: unknown;
+        training_json: string;
         created_at: string;
     } | {
         id: number;
         company_role: string;
-        training_json: unknown;
+        training_json: string;
         created_at: string;
     }[];
 }
@@ -33,6 +34,8 @@ interface TrainingScore {
     passed: boolean;
     completed_at: string;
 }
+
+type FeedbackStatus = 'correct' | 'partial' | 'incorrect' | null;
 
 type Question = {
     prompt?: string;
@@ -47,12 +50,24 @@ type Question = {
     correct_answer?: string;
 };
 
-type Assessment = { type: string; questions: Question[] };
-type TrainingContent = { study_guide: string; assessment: Assessment };
-type TrainingModule = { id: string; role: string; createdAt: string; contents: TrainingContent[] };
-type FeedbackStatus = 'correct' | 'partial' | 'incorrect' | null;
+type Assessment = {
+    type: string;
+    questions: Question[];
+};
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type TrainingContent = {
+    study_guide: string;
+    assessment: Assessment;
+};
+
+type TrainingModule = {
+    id: string;
+    role: string;
+    contents: TrainingContent[];
+    createdAt: string;
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function parseTrainingJson(raw: unknown): TrainingContent[] {
     try {
@@ -67,7 +82,11 @@ function parseTrainingJson(raw: unknown): TrainingContent[] {
     return [];
 }
 
-// ─── Markdown renderer ────────────────────────────────────────────────────────
+function getTrainingFromAssignment(a: AssignedTraining) {
+    return Array.isArray(a.training) ? a.training[0] : a.training;
+}
+
+// ─── Markdown renderer ──────────────────────────────────────────────────────
 
 function StudyGuideRenderer({ markdown }: { markdown: string }) {
     const lines = markdown.split('\n');
@@ -93,7 +112,11 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
                 if (line.trim() === '') return <div key={i} className="h-1" />;
                 const parts = line.split(/\*\*(.*?)\*\*/g);
                 if (parts.length > 1) {
-                    return <p key={i}>{parts.map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}</p>;
+                    return (
+                        <p key={i}>
+                            {parts.map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}
+                        </p>
+                    );
                 }
                 return <p key={i}>{line}</p>;
             })}
@@ -101,9 +124,9 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
     );
 }
 
-// ─── Training Viewer ─────────────────────────────────────────────────────────
+// ─── Adaptive Study UI ──────────────────────────────────────────────────────
 
-function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack: () => void }) {
+function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
     const [contentIndex, setContentIndex] = useState(0);
     const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
     const [userAnswer, setUserAnswer] = useState('');
@@ -120,8 +143,11 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
     const currentQuestion = questions[questionIndex];
 
     const resetAssessment = () => {
-        setUserAnswer(''); setFeedbackStatus(null); setFeedback('');
-        setIsSubmitted(false); setIsFlipped(false);
+        setUserAnswer('');
+        setFeedbackStatus(null);
+        setFeedback('');
+        setIsSubmitted(false);
+        setIsFlipped(false);
     };
 
     const handleSubmit = () => {
@@ -133,10 +159,19 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
             const keywords = rubric.match(/\b(validation|encoding|injection|encryption|authentication|authorization|least privilege|owasp|xss|sql|input|output|secure|remediat|isolat|contain|notif|document)\b/g) || [];
             const matched = keywords.filter(k => lower.includes(k));
             const ratio = keywords.length > 0 ? matched.length / keywords.length : 0;
-            if (ratio >= 0.5) { setFeedbackStatus('correct'); setFeedback('Excellent response! You demonstrated strong understanding of the key security concepts and their practical application.'); }
-            else if (ratio >= 0.25) { setFeedbackStatus('partial'); setFeedback('Good start! You covered some important points. Consider expanding on specific implementation details and FedRAMP control references.'); }
-            else { setFeedbackStatus('incorrect'); setFeedback('Your response needs more detail. Focus on specific security practices, how to implement them, and which FedRAMP controls they satisfy.'); }
-            setIsGenerating(false); setIsSubmitted(true);
+
+            if (ratio >= 0.5) {
+                setFeedbackStatus('correct');
+                setFeedback('Excellent response! You demonstrated strong understanding of the key security concepts and their practical application.');
+            } else if (ratio >= 0.25) {
+                setFeedbackStatus('partial');
+                setFeedback('Good start! You covered some important points. Consider expanding on specific implementation details and FedRAMP control references.');
+            } else {
+                setFeedbackStatus('incorrect');
+                setFeedback('Your response needs more detail. Focus on specific security practices, how to implement them, and which FedRAMP controls they satisfy.');
+            }
+            setIsGenerating(false);
+            setIsSubmitted(true);
         }, 1500);
     };
 
@@ -148,25 +183,23 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
             default: return { box: '', icon: '', label: '' };
         }
     };
+
     const feedbackStyle = getFeedbackStyle();
 
     if (!content) return <p className="text-sm text-gray-500 p-6">No training content available.</p>;
 
     return (
         <div className="space-y-6">
-            <button onClick={onBack} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900">
-                <ChevronLeft className="w-4 h-4" /> Back to My Training
-            </button>
-            <div>
-                <h1 className="text-2xl font-semibold text-gray-900 capitalize">{training.role} Training</h1>
-                <p className="text-sm text-gray-500 mt-1">Created {training.createdAt}</p>
-            </div>
-
             {training.contents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {training.contents.map((_c, i) => (
-                        <button key={i} onClick={() => { setContentIndex(i); resetAssessment(); setStudyMode('guide'); }}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${contentIndex === i ? 'bg-[#1e3a5f] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        <button
+                            key={i}
+                            onClick={() => { setContentIndex(i); resetAssessment(); setStudyMode('guide'); }}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                contentIndex === i ? 'bg-[#1e3a5f] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
                             Module {i + 1}
                         </button>
                     ))}
@@ -174,12 +207,20 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
             )}
 
             <div className="flex gap-2">
-                <button onClick={() => { setStudyMode('guide'); resetAssessment(); }}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${studyMode === 'guide' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+                <button
+                    onClick={() => { setStudyMode('guide'); resetAssessment(); }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'guide' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
                     <BookOpen className="w-4 h-4" /> Study Guide
                 </button>
-                <button onClick={() => { setStudyMode('assessment'); resetAssessment(); }}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${studyMode === 'assessment' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'}`}>
+                <button
+                    onClick={() => { setStudyMode('assessment'); resetAssessment(); }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'assessment' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
                     {assessmentType.includes('flashcard') ? <CreditCard className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                     {content.assessment.type}
                 </button>
@@ -194,15 +235,24 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
             {studyMode === 'assessment' && (
                 <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
                     <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{content.assessment.type} Assessment</p>
-                        {questions.length > 1 && <span className="text-xs text-gray-500">Question {questionIndex + 1} of {questions.length}</span>}
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            {content.assessment.type} Assessment
+                        </p>
+                        {questions.length > 1 && (
+                            <span className="text-xs text-gray-500">
+                                Question {questionIndex + 1} of {questions.length}
+                            </span>
+                        )}
                     </div>
 
+                    {/* Flashcards */}
                     {assessmentType.includes('flashcard') && currentQuestion && (
                         <div className="space-y-4">
                             <div onClick={() => setIsFlipped(!isFlipped)} className="relative h-56 cursor-pointer">
-                                <div className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
-                                     style={{ background: isFlipped ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)' }}>
+                                <div
+                                    className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
+                                    style={{ background: isFlipped ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)' }}
+                                >
                                     <div>
                                         <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
                                         <p className="text-lg text-white font-medium">{isFlipped ? currentQuestion.definition : currentQuestion.term}</p>
@@ -224,25 +274,44 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
                         </div>
                     )}
 
+                    {/* Multiple Choice */}
                     {assessmentType.includes('multiple') && currentQuestion && (
                         <div className="space-y-4">
                             <p className="text-sm font-medium text-gray-900">{currentQuestion.question || currentQuestion.prompt}</p>
                             <div className="space-y-2">
                                 {(currentQuestion.options || []).map((option, i) => (
-                                    <button key={i} onClick={() => !isSubmitted && setUserAnswer(option)}
-                                            className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${userAnswer === option ? 'border-[#1e3a5f] bg-blue-50 text-[#1e3a5f]' : 'border-gray-200 hover:border-gray-300 text-gray-700'} ${isSubmitted ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <button
+                                        key={i}
+                                        onClick={() => !isSubmitted && setUserAnswer(option)}
+                                        className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
+                                            userAnswer === option ? 'border-[#1e3a5f] bg-blue-50 text-[#1e3a5f]' : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                        } ${isSubmitted ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                                    >
                                         {option}
                                     </button>
                                 ))}
                             </div>
                             {!isSubmitted ? (
-                                <button onClick={() => { if (!userAnswer) return; setIsSubmitted(true); const correct = userAnswer === currentQuestion.correct_answer; setFeedbackStatus(correct ? 'correct' : 'incorrect'); setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${currentQuestion.correct_answer}`); }} disabled={!userAnswer} className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40">Submit Answer</button>
+                                <button
+                                    onClick={() => {
+                                        if (!userAnswer) return;
+                                        setIsSubmitted(true);
+                                        const correct = userAnswer === currentQuestion.correct_answer;
+                                        setFeedbackStatus(correct ? 'correct' : 'incorrect');
+                                        setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${currentQuestion.correct_answer}`);
+                                    }}
+                                    disabled={!userAnswer}
+                                    className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40"
+                                >
+                                    Submit Answer
+                                </button>
                             ) : (
                                 <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">Try Again</button>
                             )}
                         </div>
                     )}
 
+                    {/* Short Response / Case Study */}
                     {(assessmentType.includes('short') || assessmentType.includes('case')) && currentQuestion && (
                         <div className="space-y-4">
                             {currentQuestion.scenario && (
@@ -258,9 +327,14 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
                                 </div>
                             )}
                             {currentQuestion.max_score && <p className="text-xs text-gray-500">Max score: {currentQuestion.max_score} points</p>}
-                            <textarea value={userAnswer} onChange={(e) => setUserAnswer(e.target.value)} disabled={isSubmitted} rows={6}
-                                      className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                                      placeholder="Write your detailed response here..." />
+                            <textarea
+                                value={userAnswer}
+                                onChange={(e) => setUserAnswer(e.target.value)}
+                                disabled={isSubmitted}
+                                rows={6}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                                placeholder="Write your detailed response here..."
+                            />
                             {!isSubmitted ? (
                                 <button onClick={handleSubmit} disabled={!userAnswer.trim()} className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
                                     <CheckCircle className="w-4 h-4" /> Submit Response
@@ -302,16 +376,19 @@ function TrainingViewer({ training, onBack }: { training: TrainingModule; onBack
     );
 }
 
-// ─── Sidebar ─────────────────────────────────────────────────────────────────
+// ─── Sidebar ────────────────────────────────────────────────────────────────
 
 function Sidebar() {
     const { signOut } = useAuth();
     const navigate = useNavigate();
+
+    const currentPath = '/my-training';
     const navItems = [
         { icon: BookOpen, label: 'My Training', href: '/my-training' },
         { icon: BarChart3, label: 'My Analytics', href: '/my-analytics' },
+        { icon: Settings, label: 'Settings', href: '/settings' },
     ];
-    const current = '/my-training';
+
     return (
         <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 z-10">
             <div className="p-6">
@@ -326,8 +403,15 @@ function Sidebar() {
                 </div>
                 <nav className="space-y-1">
                     {navItems.map((item) => (
-                        <button key={item.label} onClick={() => navigate(item.href)}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${item.href === current ? 'bg-[#1e3a5f] text-white' : 'text-gray-700 hover:bg-gray-100'}`}>
+                        <button
+                            key={item.label}
+                            onClick={() => navigate(item.href)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                item.href === currentPath
+                                    ? 'bg-[#1e3a5f] text-white'
+                                    : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                        >
                             <item.icon className="w-5 h-5" />
                             {item.label}
                         </button>
@@ -335,8 +419,12 @@ function Sidebar() {
                 </nav>
             </div>
             <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
-                <button onClick={signOut} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors mb-4">
-                    <LogOut className="w-5 h-5" /> Sign Out
+                <button
+                    onClick={signOut}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 transition-colors mb-4"
+                >
+                    <LogOut className="w-5 h-5" />
+                    Sign Out
                 </button>
                 <div className="text-xs text-gray-500">
                     <p className="mb-1">© 2026 MARi</p>
@@ -347,55 +435,116 @@ function Sidebar() {
     );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 export function MyTrainingPage() {
     const { user, profile } = useAuth();
-    // const navigate = useNavigate();
     const [assignments, setAssignments] = useState<AssignedTraining[]>([]);
     const [scores, setScores] = useState<TrainingScore[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // The training module currently open for study (null = list view)
     const [activeTraining, setActiveTraining] = useState<TrainingModule | null>(null);
 
     useEffect(() => {
         if (!user) return;
+
         const load = async () => {
             setLoading(true);
+
             const { data: assignData } = await supabase
                 .from('assignments')
-                .select(`id, assigned_at, due_date, training:training_id (id, company_role, training_json, created_at)`)
+                .select(`
+                    id,
+                    assigned_at,
+                    due_date,
+                    training:training_id (
+                        id, company_role, training_json, created_at
+                    )
+                `)
                 .eq('user_id', user.id)
                 .order('assigned_at', { ascending: false });
+
             setAssignments((assignData ?? []) as unknown as AssignedTraining[]);
 
             const { data: scoreData } = await supabase
                 .from('training_evidence')
                 .select('training_id, score, passed, completed_at')
                 .eq('user_id', user.id);
+
             setScores((scoreData ?? []) as TrainingScore[]);
             setLoading(false);
         };
+
         void load();
     }, [user]);
 
-    const getTraining = (a: AssignedTraining) => Array.isArray(a.training) ? a.training[0] : a.training;
-    const getScore = (trainingId: number) => scores.find(s => s.training_id === trainingId);
-    const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const getScore = (trainingId: number) =>
+        scores.find(s => s.training_id === trainingId);
+
+    const formatDate = (d: string) =>
+        new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.email ?? 'User';
-    const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : '?';
+    const initials = profile
+        ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase()
+        : '?';
 
-    const handleStart = (a: AssignedTraining) => {
-        const t = getTraining(a);
+    // Open a specific assigned training inline
+    const openTraining = (a: AssignedTraining) => {
+        const t = getTrainingFromAssignment(a);
         if (!t) return;
+
+        const contents = parseTrainingJson(t.training_json);
         setActiveTraining({
             id: String(t.id),
             role: t.company_role,
-            createdAt: new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            contents: parseTrainingJson(t.training_json),
+            contents,
+            createdAt: formatDate(t.created_at),
         });
     };
 
+    // ── Detail / study view ──
+    if (activeTraining) {
+        return (
+            <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <Sidebar />
+                <div className="ml-64">
+                    <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+                        <div className="px-8 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={() => setActiveTraining(null)}
+                                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    My Training
+                                </button>
+                                <span className="text-gray-300">/</span>
+                                <h2 className="text-lg font-semibold text-gray-900 capitalize">
+                                    {activeTraining.role} Training
+                                </h2>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
+                                </div>
+                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
+                                    {initials}
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+                    <main className="p-8">
+                        <AdaptiveStudyUI training={activeTraining} />
+                    </main>
+                </div>
+            </div>
+        );
+    }
+
+    // ── List view ──
     return (
         <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
             <Sidebar />
@@ -403,7 +552,7 @@ export function MyTrainingPage() {
                 <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
                     <div className="px-8 py-4 flex items-center justify-between">
                         <div>
-                            <h2 className="text-2xl font-semibold text-gray-900">{activeTraining ? `${activeTraining.role} Training` : 'My Training'}</h2>
+                            <h2 className="text-2xl font-semibold text-gray-900">My Training</h2>
                             <p className="text-sm text-gray-600 mt-1">Welcome back, {displayName}</p>
                         </div>
                         <div className="flex items-center gap-3">
@@ -411,91 +560,109 @@ export function MyTrainingPage() {
                                 <p className="text-sm font-medium text-gray-900">{displayName}</p>
                                 <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
                             </div>
-                            <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">{initials}</div>
+                            <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
+                                {initials}
+                            </div>
                         </div>
                     </div>
                 </header>
 
                 <main className="p-8 space-y-6">
-                    {activeTraining ? (
-                        <TrainingViewer training={activeTraining} onBack={() => setActiveTraining(null)} />
-                    ) : (
-                        <>
-                            <div className="grid grid-cols-3 gap-6">
-                                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                                    <p className="text-sm text-gray-600">Assigned</p>
-                                    <p className="text-3xl font-bold text-gray-900 mt-1">{assignments.length}</p>
-                                </div>
-                                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                                    <p className="text-sm text-gray-600">Completed</p>
-                                    <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
-                                </div>
-                                <div className="bg-white rounded-xl border border-gray-200 p-6">
-                                    <p className="text-sm text-gray-600">Passed</p>
-                                    <p className="text-3xl font-bold text-green-600 mt-1">{scores.filter(s => s.passed).length}</p>
-                                </div>
-                            </div>
+                    {/* Summary cards */}
+                    <div className="grid grid-cols-3 gap-6">
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                            <p className="text-sm text-gray-600">Assigned</p>
+                            <p className="text-3xl font-bold text-gray-900 mt-1">{assignments.length}</p>
+                        </div>
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                            <p className="text-sm text-gray-600">Completed</p>
+                            <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
+                        </div>
+                        <div className="bg-white rounded-xl border border-gray-200 p-6">
+                            <p className="text-sm text-gray-600">Passed</p>
+                            <p className="text-3xl font-bold text-green-600 mt-1">
+                                {scores.filter(s => s.passed).length}
+                            </p>
+                        </div>
+                    </div>
 
-                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                                <div className="p-6 border-b border-gray-200">
-                                    <h3 className="text-lg font-semibold text-gray-900">Assigned Trainings</h3>
-                                </div>
-                                {loading ? (
-                                    <div className="p-12 text-center">
-                                        <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
-                                        <p className="text-sm text-gray-500">Loading your trainings...</p>
-                                    </div>
-                                ) : assignments.length === 0 ? (
-                                    <div className="p-12 text-center">
-                                        <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                                        <p className="text-sm text-gray-500 font-medium">No trainings assigned yet</p>
-                                        <p className="text-xs text-gray-400 mt-1">Your admin will assign trainings to you</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 border-b border-gray-200">
-                                        <tr>
-                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
-                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
-                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
-                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
-                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                            <th className="px-6 py-3" />
-                                        </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200">
-                                        {assignments.map((a) => {
-                                            const t = getTraining(a);
-                                            const score = t ? getScore(t.id) : undefined;
-                                            return (
-                                                <tr key={a.id} className="hover:bg-gray-50">
-                                                    <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{t?.company_role ?? '—'} Training</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(a.assigned_at)}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{a.due_date ? formatDate(a.due_date) : '—'}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-600">{score ? `${score.score}/100` : '—'}</td>
-                                                    <td className="px-6 py-4">
-                                                        {score ? (
-                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${score.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                                    {score.passed ? 'Passed' : 'Failed'}
-                                                                </span>
-                                                        ) : (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <button onClick={() => handleStart(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
-                                                            Start <ChevronRight className="w-3 h-3" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                        </tbody>
-                                    </table>
-                                )}
+                    {/* Assigned trainings table */}
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="p-6 border-b border-gray-200">
+                            <h3 className="text-lg font-semibold text-gray-900">Assigned Trainings</h3>
+                        </div>
+
+                        {loading ? (
+                            <div className="p-12 text-center">
+                                <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">Loading your trainings...</p>
                             </div>
-                        </>
-                    )}
+                        ) : assignments.length === 0 ? (
+                            <div className="p-12 text-center">
+                                <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                                <p className="text-sm text-gray-500 font-medium">No trainings assigned yet</p>
+                                <p className="text-xs text-gray-400 mt-1">Your admin will assign trainings to you</p>
+                            </div>
+                        ) : (
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                <tr>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                    <th className="px-6 py-3" />
+                                </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                {assignments.map((a) => {
+                                    const t = getTrainingFromAssignment(a);
+                                    const score = t ? getScore(t.id) : undefined;
+                                    return (
+                                        <tr key={a.id} className="hover:bg-gray-50">
+                                            <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">
+                                                {t?.company_role ?? '—'} Training
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {formatDate(a.assigned_at)}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {a.due_date ? formatDate(a.due_date) : '—'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600">
+                                                {score ? `${score.score}/100` : '—'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {score ? (
+                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                        score.passed
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-red-100 text-red-700'
+                                                    }`}>
+                                                            {score.passed ? 'Passed' : 'Failed'}
+                                                        </span>
+                                                ) : (
+                                                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                            Pending
+                                                        </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <button
+                                                    onClick={() => openTraining(a)}
+                                                    className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline"
+                                                >
+                                                    Start <ChevronRight className="w-3 h-3" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 </main>
             </div>
         </div>
