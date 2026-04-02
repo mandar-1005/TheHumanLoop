@@ -32,8 +32,10 @@ export function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
 
+    const { isAdmin } = useAuth();
+
     if (session) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to={isAdmin ? '/dashboard' : '/my-training'} replace />;
     }
     const validateEmail = (email: string) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -110,12 +112,29 @@ export function LoginPage() {
             });
 
             if (error) {
-                setAuthError(error.message);
+                const isInvalidCredentials =
+                    error.message.toLowerCase().includes('invalid') ||
+                    error.message.toLowerCase().includes('credentials') ||
+                    error.status === 400;
+                setAuthError(
+                    isInvalidCredentials
+                        ? 'Invalid email or password. Please check your credentials and try again.'
+                        : 'An error occurred. Please try again.'
+                );
                 return;
             }
 
-            // Redirect to dashboard on success
-            navigate('/dashboard');
+            // Redirect based on role
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .single();
+
+            if (profile?.role === 'admin') {
+                navigate('/dashboard');
+            } else {
+                navigate('/my-training');
+            }
         } catch (err) {
             setAuthError('An unexpected error occurred. Please try again.');
         } finally {
