@@ -42,9 +42,9 @@ function App() {
                         <ProtectedRoute><RoleGuard requireAdmin><RolesAssessmentsPage /></RoleGuard></ProtectedRoute>
                     } />
 
-                    {/* Employee */}
+                    {/* Employee-only — admins get bounced to dashboard */}
                     <Route path="/my-training" element={
-                        <ProtectedRoute><MyTrainingPage /></ProtectedRoute>
+                        <ProtectedRoute><RoleGuard requireEmployee><MyTrainingPage /></RoleGuard></ProtectedRoute>
                     } />
 
                     <Route path="*" element={<div className="p-10">404 - Page Not Found</div>} />
