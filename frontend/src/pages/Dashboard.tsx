@@ -312,7 +312,7 @@ export function Dashboard() {
                             <button
                                 key={item.label}
                                 onClick={() => {
-                                    if (item.href === '/training-modules' || item.href === '/ssp-documents') {
+                                    if (item.href === '/training-modules' || item.href === '/ssp-documents' || item.href === '/roles') {
                                         navigate(item.href);
                                         return;
                                     }
@@ -450,50 +450,50 @@ export function Dashboard() {
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
-                                    </tr>
+                                <tr>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
+                                </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                    {trainingModules.map((module) => (
-                                        <tr key={module.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-medium text-gray-900">{module.name}</p>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-sm text-gray-600">{module.role}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
+                                {trainingModules.map((module) => (
+                                    <tr key={module.id} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4">
+                                            <p className="text-sm font-medium text-gray-900">{module.name}</p>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-gray-600">{module.role}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
                                                 <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(module.status)}`}>
                                                     {module.status}
                                                 </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-[#1e3a5f] rounded-full"
-                                                            style={{ width: `${module.completion}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-sm text-gray-600">{module.completion}%</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-[#1e3a5f] rounded-full"
+                                                        style={{ width: `${module.completion}%` }}
+                                                    />
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-sm text-gray-600">{module.lastUpdated}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <button className="text-gray-400 hover:text-gray-600">
-                                                    <MoreVertical className="w-4 h-4" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                <span className="text-sm text-gray-600">{module.completion}%</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-gray-600">{module.lastUpdated}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button className="text-gray-400 hover:text-gray-600">
+                                                <MoreVertical className="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
                                 </tbody>
                             </table>
                         </div>
