@@ -385,7 +385,7 @@ function Sidebar() {
     const currentPath = '/my-training';
     const navItems = [
         { icon: BookOpen, label: 'My Training', href: '/my-training' },
-        { icon: BarChart3, label: 'My Analytics', href: '/my-analytics' },
+        { icon: BarChart3, label: 'My Analytics', href: null },
         { icon: Settings, label: 'Settings', href: '/settings' },
     ];
 
@@ -405,9 +405,9 @@ function Sidebar() {
                     {navItems.map((item) => (
                         <button
                             key={item.label}
-                            onClick={() => navigate(item.href)}
+                            onClick={() => item.href ? navigate(item.href) : alert(`${item.label} page coming soon!`)}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                item.href === currentPath
+                                item.href !== null && item.href === currentPath
                                     ? 'bg-[#1e3a5f] text-white'
                                     : 'text-gray-700 hover:bg-gray-100'
                             }`}
