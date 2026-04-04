@@ -1,9 +1,22 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+<<<<<<< Updated upstream
 
 from app.endpoints.trainings import router as trainings_router
 
 app = FastAPI(title="FedRAMP Training API")
+=======
+from app.endpoints.feedback import router as feedback_router
+from app.endpoints.grading import router as grading_router
+from app.endpoints.system import router as system_router
+from app.endpoints.trainings import router as trainings_router
+
+app = FastAPI(title="FedRAMP Agents Service")
+app.include_router(trainings_router)
+app.include_router(grading_router)
+app.include_router(feedback_router)
+app.include_router(system_router)
+>>>>>>> Stashed changes
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,6 +28,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+<<<<<<< Updated upstream
 
 
 @app.get("/health")
@@ -269,3 +283,5 @@ def regrade_with_temperature(payload: RegradeRequest):
         "rubric": rubric_bundle,
         "grading_result": llm_grade,
     }
+=======
+>>>>>>> Stashed changes

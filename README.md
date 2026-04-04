@@ -16,6 +16,13 @@ A **company-facing tool** that creates FedRAMP compliance trainings. Companies p
 - **Taking training:** Employees take generated modules and assessments (in-app or export).
 - **Auth & security:** Work email, organization, role; FedRAMP-oriented controls, RLS, 2FA where needed.
 
+## Current implementation highlights
+
+- Training generation endpoint is available at `POST /api/trainings/create`.
+- Grading endpoints are available at `POST /grading/grade` and `POST /grading/regrade`.
+- Admin feedback endpoint is available at `POST /api/feedback` with `positive_score` values of `1` or `-1`.
+- Training feedback is stored as an aggregate `positive_score` on the `trainings` table.
+
 ## Tech stack
 
 - **Frontend:** React, Tailwind CSS
@@ -44,9 +51,20 @@ cd frontend && npm run dev
 ```python -m pip install -r backend/services/fedramp_agents/requirements.txt
 ```
 
+API docs: http://127.0.0.1:8000/docs
+
+### Run backend tests
+
+```bash
+cd backend/services/fedramp_agents
+python -m pytest app/tests -q
+```
+
 ### Environment variables
 
 See `.env.example` for required variables.
+
+Backend expects `SUPABASE_URL` and service role `SUPABASE_KEY` in backend/services/fedramp_agents/.env.
 
 ## Project structure
 

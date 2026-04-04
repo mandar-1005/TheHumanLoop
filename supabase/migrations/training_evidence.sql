@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS public.training_evidence (
     organization_id TEXT NOT NULL,
 
     -- What they completed
-    training_id UUID REFERENCES public.trainings ON DELETE SET NULL,
+    training_id BIGINT REFERENCES public.trainings ON DELETE SET NULL,
     company_role TEXT NOT NULL,
 
     -- Results

@@ -36,6 +36,7 @@ type TrainingRow = {
     company_role: string | null;
     training_json: unknown;
     created_at: string | null;
+    positive_score?: number | null;
 };
 
 type TrainingModule = {
@@ -44,6 +45,7 @@ type TrainingModule = {
     status: TrainingStatus;
     createdAt: string;
     contents: TrainingContent[];
+    positiveScore: number;
 };
 
 type FeedbackStatus = 'correct' | 'partial' | 'incorrect' | null;
@@ -73,12 +75,29 @@ function parseTrainingJson(raw: unknown): TrainingContent[] {
 
 function mapTraining(row: TrainingRow): TrainingModule {
     const contents = parseTrainingJson(row.training_json);
+<<<<<<< Updated upstream
+=======
+
+    // Formatting the date to include time (for example, Mar 24, 2026, 2:15 PM)
+    const formattedDate = row.created_at
+        ? new Date(row.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        })
+        : 'Unknown';
+
+>>>>>>> Stashed changes
     return {
         id: String(row.id),
         role: row.company_role || 'Other',
         status: 'Published',
         createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown',
         contents,
+        positiveScore: Number(row.positive_score ?? 0),
     };
 }
 
@@ -203,7 +222,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
 
     return (
         <div className="space-y-6">
-            {/* Role tabs if multiple contents */}
+            {/* Role tabs if many contents */}
             {training.contents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {training.contents.map((_c, i) => {
@@ -520,8 +539,56 @@ export function TrainingModulesPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<TrainingModule | null>(null);
+    const [feedbackError, setFeedbackError] = useState<string | null>(null);
+    const [feedbackLoadingId, setFeedbackLoadingId] = useState<string | null>(null);
+    const { user } = useAuth();
 
     const total = useMemo(() => rows.length, [rows]);
+
+    const applyFeedback = async (training: TrainingModule, delta: 1 | -1) => {
+        if (!user?.id) {
+            setFeedbackError('You must be signed in to send feedback.');
+            return;
+        }
+
+        setFeedbackError(null);
+        setFeedbackLoadingId(training.id);
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/api/feedback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    training_id: Number(training.id),
+                    user_id: user.id,
+                    positive_score: delta,
+                }),
+            });
+
+            const body = await response.json();
+
+            if (!response.ok) {
+                throw new Error(body.detail || 'Feedback submission failed.');
+            }
+
+            setRows(prev => prev.map(row => (
+                row.id === training.id
+                    ? { ...row, positiveScore: Number(body.positive_score ?? row.positiveScore + delta) }
+                    : row
+            )));
+
+            setSelected(prev => prev && prev.id === training.id
+                ? { ...prev, positiveScore: Number(body.positive_score ?? prev.positiveScore + delta) }
+                : prev
+            );
+        } catch (err) {
+            setFeedbackError(err instanceof Error ? err.message : 'Feedback submission failed.');
+        } finally {
+            setFeedbackLoadingId(null);
+        }
+    };
 
     useEffect(() => {
         let mounted = true;
@@ -532,7 +599,7 @@ export function TrainingModulesPage() {
 
             const { data, error } = await supabase
                 .from('trainings')
-                .select('id, company_role, training_json, created_at')
+                .select('id, company_role, training_json, created_at, positive_score')
                 .order('created_at', { ascending: false });
 
             if (!mounted) return;
@@ -571,6 +638,28 @@ export function TrainingModulesPage() {
                                 {selected.role} Training
                             </h1>
                             <p className="text-sm text-gray-500 mt-1">Created {selected.createdAt}</p>
+                            <div className="mt-4 flex flex-wrap items-center gap-3">
+                                <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700">
+                                    Positive Score: {selected.positiveScore}
+                                </span>
+                                <button
+                                    onClick={() => void applyFeedback(selected, 1)}
+                                    disabled={feedbackLoadingId === selected.id}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                    +1 Helpful
+                                </button>
+                                <button
+                                    onClick={() => void applyFeedback(selected, -1)}
+                                    disabled={feedbackLoadingId === selected.id}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                                >
+                                    -1 Needs Work
+                                </button>
+                            </div>
+                            {feedbackError && (
+                                <p className="mt-2 text-sm text-red-600">{feedbackError}</p>
+                            )}
                         </div>
 
                         <AdaptiveStudyUI training={selected} />
@@ -599,23 +688,24 @@ export function TrainingModulesPage() {
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assessment Type</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Modules</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Positive Score</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
                             </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                             {loading && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                    <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
                                 </tr>
                             )}
                             {!loading && error && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
+                                    <td colSpan={6} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
                                 </tr>
                             )}
                             {!loading && !error && rows.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
+                                    <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
                                 </tr>
                             )}
                             {!loading && !error && rows.map((row) => (
@@ -634,6 +724,7 @@ export function TrainingModulesPage() {
                         {row.status}
                       </span>
                                     </td>
+                                                                        <td className="px-6 py-4 text-sm text-gray-700 font-medium">{row.positiveScore}</td>
                                     <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
                                 </tr>
                             ))}
