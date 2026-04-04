@@ -1,8 +1,6 @@
 from fastapi import FastAPI, HTTPException
 import logging
 from fastapi.middleware.cors import CORSMiddleware
-from app.pipeline.grading_agent import GradingAgent
-from app.pipeline.rubric_engine import resolve_rubric, rubric_to_text
 
 from app.schemas.training import (
     GradeAssessmentRequest,
@@ -10,10 +8,12 @@ from app.schemas.training import (
 )
 from app.endpoints.trainings import router as trainings_router
 
+app = FastAPI(title="FedRAMP Training API")
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="FedRAMP Agents Service")
 app.include_router(trainings_router)
+
 
 app.add_middleware(
     CORSMiddleware,

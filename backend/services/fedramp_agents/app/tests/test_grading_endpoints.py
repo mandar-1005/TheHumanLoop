@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
+from app.services import grading_service
 
 
 client = TestClient(main.app)
@@ -151,7 +152,7 @@ def test_grade_descriptive_with_mocked_grader(monkeypatch):
                 "improvements": ["Add stronger audit evidence examples."],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.3,
@@ -208,7 +209,7 @@ def test_regrade_uses_modified_temperature(monkeypatch):
                 "improvements": ["Add artifact examples."],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.9,
@@ -275,7 +276,7 @@ def test_role_template_rubric_is_applied_for_descriptive(monkeypatch):
                 ],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.3,
@@ -329,7 +330,7 @@ def test_unknown_role_uses_other_rubric(monkeypatch):
                 "criterion_scores": [],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.2,
@@ -378,7 +379,7 @@ def test_compliance_officer_higher_threshold(monkeypatch):
                 "criterion_scores": [],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.2,
@@ -426,7 +427,7 @@ def test_mixed_assessment(monkeypatch):
                 "criterion_scores": [],
             }
 
-    monkeypatch.setattr(main, "GradingAgent", FakeGradingAgent)
+    monkeypatch.setattr(grading_service, "GradingAgent", FakeGradingAgent)
 
     payload = {
         "temperature": 0.2,

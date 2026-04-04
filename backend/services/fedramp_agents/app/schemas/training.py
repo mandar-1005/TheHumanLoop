@@ -6,7 +6,8 @@ class CreateTrainingResponse(BaseModel):
     success: bool
     message: str
     result: dict[str, Any]
-from typing import List, Optional
+from typing import List, Optional, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -44,3 +45,9 @@ class RegradeRequest(BaseModel):
     question: AssessmentQuestion
     selected_answer: str
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+
+
+class TrainingFeedbackRequest(BaseModel):
+    training_id: int
+    user_id: UUID
+    positive_score: Literal[-1, 1]
