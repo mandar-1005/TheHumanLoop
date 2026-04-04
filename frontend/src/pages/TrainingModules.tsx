@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, CreditCard, FileText, CheckCircle, AlertCircle, XCircle, RotateCw, RefreshCw, Sparkles, ChevronRight, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut } from 'lucide-react';
+import {
+    ChevronLeft, BookOpen, CreditCard, FileText,
+    CheckCircle, AlertCircle, XCircle, RotateCw, RefreshCw,
+    Sparkles, ChevronRight, LayoutDashboard, Users,
+    BarChart3, Settings, Shield, LogOut,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { AIGradingChat } from '../components/AIGradingChat';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -53,17 +59,11 @@ type FeedbackStatus = 'correct' | 'partial' | 'incorrect' | null;
 function parseTrainingJson(raw: unknown): TrainingContent[] {
     try {
         let parsed = raw;
-
-        // If it's a string (possibly with ```json fences), clean and parse it
         if (typeof raw === 'string') {
             const cleaned = raw.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
             parsed = JSON.parse(cleaned);
         }
-
-        // It should be an array of { study_guide, assessment }
         if (Array.isArray(parsed)) return parsed as TrainingContent[];
-
-        // Single object
         if (typeof parsed === 'object' && parsed !== null) return [parsed as TrainingContent];
     } catch {
         // ignore parse errors
@@ -73,8 +73,6 @@ function parseTrainingJson(raw: unknown): TrainingContent[] {
 
 function mapTraining(row: TrainingRow): TrainingModule {
     const contents = parseTrainingJson(row.training_json);
-
-    // Formatting the date to include time (e.g., Mar 24, 2026, 2:15 PM)
     const formattedDate = row.created_at
         ? new Date(row.created_at).toLocaleString('en-US', {
             month: 'short',
@@ -82,7 +80,7 @@ function mapTraining(row: TrainingRow): TrainingModule {
             year: 'numeric',
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
         })
         : 'Unknown';
 
@@ -96,7 +94,6 @@ function mapTraining(row: TrainingRow): TrainingModule {
 }
 
 // ─── Markdown-lite renderer ────────────────────────────────────────────────
-// Renders bold, headings, bullet lists from the study_guide markdown string
 
 function StudyGuideRenderer({ markdown }: { markdown: string }) {
     const lines = markdown.split('\n');
@@ -104,15 +101,9 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
     return (
         <div className="space-y-2 text-sm text-gray-800 leading-relaxed">
             {lines.map((line, i) => {
-                if (line.startsWith('## ')) {
-                    return <h2 key={i} className="text-lg font-bold text-gray-900 mt-4 mb-1">{line.replace('## ', '')}</h2>;
-                }
-                if (line.startsWith('### ')) {
-                    return <h3 key={i} className="text-base font-semibold text-gray-900 mt-3 mb-1">{line.replace('### ', '')}</h3>;
-                }
-                if (line.startsWith('#### ')) {
-                    return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace('#### ', '')}</h4>;
-                }
+                if (line.startsWith('## ')) return <h2 key={i} className="text-lg font-bold text-gray-900 mt-4 mb-1">{line.replace('## ', '')}</h2>;
+                if (line.startsWith('### ')) return <h3 key={i} className="text-base font-semibold text-gray-900 mt-3 mb-1">{line.replace('### ', '')}</h3>;
+                if (line.startsWith('#### ')) return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace('#### ', '')}</h4>;
                 if (line.match(/^\d+\.\s+\*\*/)) {
                     const text = line.replace(/^\d+\.\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
                     return <p key={i} className="font-semibold text-gray-900 mt-2">{text}</p>;
@@ -127,15 +118,11 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
                     );
                 }
                 if (line.trim() === '') return <div key={i} className="h-1" />;
-
-                // Inline bold
                 const parts = line.split(/\*\*(.*?)\*\*/g);
                 if (parts.length > 1) {
                     return (
                         <p key={i}>
-                            {parts.map((part, j) =>
-                                j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-                            )}
+                            {parts.map((part, j) => j % 2 === 1 ? <strong key={j}>{part}</strong> : part)}
                         </p>
                     );
                 }
@@ -149,7 +136,7 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
 
 function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
     const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
+    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
     const [userAnswer, setUserAnswer] = useState('');
     const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>(null);
     const [feedback, setFeedback] = useState('');
@@ -175,7 +162,6 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
         if (!userAnswer.trim()) return;
         setIsGenerating(true);
 
-        // Simulate AI grading based on rubric keywords
         setTimeout(() => {
             const lower = userAnswer.toLowerCase();
             const rubric = String(currentQuestion?.rubric || currentQuestion?.grading_rubric || '').toLowerCase();
@@ -239,7 +225,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
             )}
 
             {/* Mode toggle */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
                 <button
                     onClick={() => { setStudyMode('guide'); resetAssessment(); }}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -257,6 +243,15 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                 >
                     {assessmentType.includes('flashcard') ? <CreditCard className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                     {content.assessment.type}
+                </button>
+                <button
+                    onClick={() => { setStudyMode('chat'); resetAssessment(); }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'chat' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
+                    <Sparkles className="w-4 h-4" />
+                    AI Grading Chat
                 </button>
             </div>
 
@@ -276,62 +271,41 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                         </p>
                         {questions.length > 1 && (
                             <span className="text-xs text-gray-500">
-                Question {questionIndex + 1} of {questions.length}
-              </span>
+                                Question {questionIndex + 1} of {questions.length}
+                            </span>
                         )}
                     </div>
 
-                    {/* ── Flashcards ── */}
+                    {/* Flashcards */}
                     {assessmentType.includes('flashcard') && currentQuestion && (
                         <div className="space-y-4">
-                            <div
-                                onClick={() => setIsFlipped(!isFlipped)}
-                                className="relative h-56 cursor-pointer"
-                            >
+                            <div onClick={() => setIsFlipped(!isFlipped)} className="relative h-56 cursor-pointer">
                                 <div
                                     className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
-                                    style={{
-                                        background: isFlipped
-                                            ? 'linear-gradient(135deg, #16a34a, #15803d)'
-                                            : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)'
-                                    }}
+                                    style={{ background: isFlipped ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)' }}
                                 >
                                     <div>
                                         <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
-                                        <p className="text-lg text-white font-medium">
-                                            {isFlipped ? currentQuestion.definition : currentQuestion.term}
-                                        </p>
+                                        <p className="text-lg text-white font-medium">{isFlipped ? currentQuestion.definition : currentQuestion.term}</p>
                                         <p className="text-xs text-white/50 mt-6">Click to flip</p>
                                     </div>
                                 </div>
                             </div>
-
                             <div className="flex justify-between">
-                                <button
-                                    onClick={() => { setQuestionIndex(q => Math.max(0, q - 1)); setIsFlipped(false); }}
-                                    disabled={questionIndex === 0}
-                                    className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
-                                >
+                                <button onClick={() => { setQuestionIndex(q => Math.max(0, q - 1)); setIsFlipped(false); }} disabled={questionIndex === 0} className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40">
                                     <ChevronLeft className="w-4 h-4" /> Previous
                                 </button>
-                                <button
-                                    onClick={() => setIsFlipped(!isFlipped)}
-                                    className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white"
-                                >
+                                <button onClick={() => setIsFlipped(!isFlipped)} className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white">
                                     <RotateCw className="w-4 h-4" /> Flip
                                 </button>
-                                <button
-                                    onClick={() => { setQuestionIndex(q => Math.min(questions.length - 1, q + 1)); setIsFlipped(false); }}
-                                    disabled={questionIndex === questions.length - 1}
-                                    className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
-                                >
+                                <button onClick={() => { setQuestionIndex(q => Math.min(questions.length - 1, q + 1)); setIsFlipped(false); }} disabled={questionIndex === questions.length - 1} className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40">
                                     Next <ChevronRight className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* ── Multiple Choice ── */}
+                    {/* Multiple Choice */}
                     {assessmentType.includes('multiple') && currentQuestion && (
                         <div className="space-y-4">
                             <p className="text-sm font-medium text-gray-900">{currentQuestion.question || currentQuestion.prompt}</p>
@@ -341,9 +315,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                                         key={i}
                                         onClick={() => !isSubmitted && setUserAnswer(option)}
                                         className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
-                                            userAnswer === option
-                                                ? 'border-[#1e3a5f] bg-blue-50 text-[#1e3a5f]'
-                                                : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                                            userAnswer === option ? 'border-[#1e3a5f] bg-blue-50 text-[#1e3a5f]' : 'border-gray-200 hover:border-gray-300 text-gray-700'
                                         } ${isSubmitted ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                                     >
                                         {option}
@@ -365,36 +337,27 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                                     Submit Answer
                                 </button>
                             ) : (
-                                <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">
-                                    Try Again
-                                </button>
+                                <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">Try Again</button>
                             )}
                         </div>
                     )}
 
-                    {/* ── Short Response / Case Study ── */}
+                    {/* Short Response / Case Study */}
                     {(assessmentType.includes('short') || assessmentType.includes('case')) && currentQuestion && (
                         <div className="space-y-4">
-                            {/* Scenario for case study */}
                             {currentQuestion.scenario && (
                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                     <p className="text-xs font-semibold text-blue-700 mb-2">SCENARIO</p>
                                     <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{currentQuestion.scenario}</p>
                                 </div>
                             )}
-
-                            {/* Prompt */}
                             {currentQuestion.prompt && (
                                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                                     <p className="text-xs font-semibold text-amber-700 mb-2">QUESTION</p>
                                     <p className="text-sm text-gray-800 leading-relaxed">{currentQuestion.prompt}</p>
                                 </div>
                             )}
-
-                            {currentQuestion.max_score && (
-                                <p className="text-xs text-gray-500">Max score: {currentQuestion.max_score} points</p>
-                            )}
-
+                            {currentQuestion.max_score && <p className="text-xs text-gray-500">Max score: {currentQuestion.max_score} points</p>}
                             <textarea
                                 value={userAnswer}
                                 onChange={(e) => setUserAnswer(e.target.value)}
@@ -403,29 +366,21 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                                 className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
                                 placeholder="Write your detailed response here..."
                             />
-
                             {!isSubmitted ? (
-                                <button
-                                    onClick={handleSubmit}
-                                    disabled={!userAnswer.trim()}
-                                    className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
-                                >
-                                    <CheckCircle className="w-4 h-4" />
-                                    Submit Response
+                                <button onClick={handleSubmit} disabled={!userAnswer.trim()} className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
+                                    <CheckCircle className="w-4 h-4" /> Submit Response
                                 </button>
                             ) : (
                                 <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 flex items-center justify-center gap-2">
                                     <RotateCw className="w-4 h-4" /> Try Again
                                 </button>
                             )}
-
                             {isGenerating && (
                                 <div className="flex items-center gap-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                     <Sparkles className="w-5 h-5 text-blue-600 animate-spin" />
                                     <span className="text-sm font-medium text-blue-700">Analyzing your response...</span>
                                 </div>
                             )}
-
                             {isSubmitted && feedbackStatus && !isGenerating && (
                                 <div className={`p-4 border-2 rounded-lg ${feedbackStyle.box}`}>
                                     <div className="flex items-start gap-3 mb-3">
@@ -439,10 +394,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                                             <p className="text-sm leading-relaxed">{feedback}</p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={handleSubmit}
-                                        className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-                                    >
+                                    <button onClick={handleSubmit} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                                         <RefreshCw className="w-3.5 h-3.5" /> Regenerate Feedback
                                     </button>
                                 </div>
@@ -450,6 +402,11 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* ── AI Grading Chat ── */}
+            {studyMode === 'chat' && (
+                <AIGradingChat training={training} />
             )}
         </div>
     );
@@ -465,9 +422,9 @@ function Sidebar() {
         { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
         { icon: BookOpen, label: 'Training Modules', href: '/training-modules' },
         { icon: FileText, label: 'SSP Documents', href: '/ssp-documents' },
-        { icon: Users, label: 'Roles & Assessments', href: null },
+        { icon: Users, label: 'Roles & Assessments', href: '/roles' },
         { icon: BarChart3, label: 'Analytics', href: null },
-        { icon: Settings, label: 'Settings', href: null },
+        { icon: Settings, label: 'Settings', href: '/settings' },
     ];
 
     const current = '/training-modules';
@@ -475,7 +432,6 @@ function Sidebar() {
     return (
         <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 z-10">
             <div className="p-6">
-                {/* Logo */}
                 <div className="flex items-center gap-3 mb-10">
                     <div className="w-10 h-10 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
                         <Shield className="w-6 h-6 text-white" />
@@ -486,7 +442,6 @@ function Sidebar() {
                     </div>
                 </div>
 
-                {/* Nav */}
                 <nav className="space-y-1">
                     {navItems.map((item) => (
                         <button
@@ -508,7 +463,6 @@ function Sidebar() {
                 </nav>
             </div>
 
-            {/* Bottom */}
             <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
                 <button
                     onClick={signOut}
@@ -643,9 +597,9 @@ export function TrainingModulesPage() {
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-700">{row.contents.length}</td>
                                     <td className="px-6 py-4">
-                      <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
-                        {row.status}
-                      </span>
+                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+                                                {row.status}
+                                            </span>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
                                 </tr>
