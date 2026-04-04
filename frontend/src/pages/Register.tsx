@@ -8,6 +8,7 @@ interface FormData {
     lastName: string;
     email: string;
     organization: string;
+    accountType: 'admin' | 'employee';
     role: string;
     password: string;
     confirmPassword: string;
@@ -28,6 +29,7 @@ export function RegistrationPage() {
         lastName: '',
         email: '',
         organization: '',
+        accountType: 'employee',
         role: '',
         password: '',
         confirmPassword: '',
@@ -40,11 +42,10 @@ export function RegistrationPage() {
     const validateEmail = (email: string) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         const isValid = emailRegex.test(email);
-        const isCompanyEmail = !email.match(/@(gmail|yahoo|hotmail|outlook)\.com$/i);
 
         if (!email) return { isValid: false, message: 'Email is required' };
         if (!isValid) return { isValid: false, message: 'Invalid email format' };
-        if (!isCompanyEmail) return { isValid: false, message: 'Please use a company email' };
+
         return { isValid: true, message: '' };
     };
 
@@ -137,8 +138,9 @@ export function RegistrationPage() {
                     data: {
                         first_name: formData.firstName,
                         last_name: formData.lastName,
-                        organization_id: formData.organization.toLowerCase().replace(/\s+/g, '-'),
-                        role: formData.role,
+                        organization_id: formData.organization.trim(),
+                        role: formData.accountType, // 'admin' or 'employee'
+                        job_role: formData.role,    // developer, security-lead etc
                     }
                 }
             });
@@ -328,7 +330,7 @@ export function RegistrationPage() {
                                     }`}
                                     placeholder="john.doe@company.com"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">Company email only</p>
+                                <p className="text-xs text-gray-500 mt-1">Please enter your preferred email address</p>
                                 {touched.email && validationState.email && !validationState.email.isValid && (
                                     <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
                                         <AlertCircle className="w-3 h-3" />
@@ -365,6 +367,43 @@ export function RegistrationPage() {
                                         {validationState.organization.message}
                                     </p>
                                 )}
+                            </div>
+
+                            {/* Account Type */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                    Account Type
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, accountType: 'employee' }))}
+                                        className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                                            formData.accountType === 'employee'
+                                                ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
+                                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <div className="font-semibold">Employee</div>
+                                        <div className={`text-xs mt-0.5 ${formData.accountType === 'employee' ? 'text-blue-200' : 'text-gray-400'}`}>
+                                            View assigned training
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, accountType: 'admin' }))}
+                                        className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                                            formData.accountType === 'admin'
+                                                ? 'border-[#1e3a5f] bg-[#1e3a5f] text-white'
+                                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <div className="font-semibold">Admin</div>
+                                        <div className={`text-xs mt-0.5 ${formData.accountType === 'admin' ? 'text-blue-200' : 'text-gray-400'}`}>
+                                            Full platform access
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Role */}

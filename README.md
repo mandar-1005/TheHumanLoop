@@ -41,14 +41,17 @@ A **company-facing tool** that creates FedRAMP compliance trainings. Companies p
 ### Installation
 
 ```bash
+cd frontend
 npm install
 cp .env.example .env.local
-cd frontend && npm run dev
+npm run dev
 ```
 
 ### Backend (FedRAMP agents)
 
-```python -m pip install -r backend/services/fedramp_agents/requirements.txt
+```python -m pip install -r backend/services/fedramp_agents/app/requirements.txt
+cd backend/services/fedramp_agents
+uvicorn app.main:app --reload --port 8000
 ```
 
 API docs: http://127.0.0.1:8000/docs

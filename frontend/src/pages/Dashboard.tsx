@@ -111,6 +111,7 @@ const trainingModules = [
 interface SSPDocRow {
     id: string;
     file_name: string;
+    file_path: string;
     file_size: number;
     created_at: string;
 }
@@ -166,8 +167,9 @@ export function Dashboard() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState('');
-    const [sspFile, setSspFile] = useState<File | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [allSSPs, setAllSSPs] = useState<SSPDocRow[]>([]);
+    const [selectedSSPId, setSelectedSSPId] = useState<string>('');
 
     const [profile, setProfile] = useState<{
         first_name: string;
@@ -190,7 +192,7 @@ export function Dashboard() {
 
             supabase
                 .from('ssp_documents')
-                .select('id, file_name, file_size, created_at')
+                .select('id, file_name, file_path, file_size, created_at')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(5)
@@ -201,14 +203,25 @@ export function Dashboard() {
         }
     }, [user]);
 
+    const openCreateModal = async () => {
+        setShowCreateModal(true);
+        if (!profile?.organization_id) return;
+        const { data } = await supabase
+            .from('ssp_documents')
+            .select('id, file_name, file_path, file_size, created_at')
+            .eq('user_id', user!.id)
+            .order('created_at', { ascending: false });
+        setAllSSPs((data ?? []) as SSPDocRow[]);
+    };
+
     const handleCreateTraining = async () => {
         if (!newRole.trim()) {
             toast.error('Please enter a role.');
             return;
         }
 
-        if (!sspFile) {
-            toast.error('Please upload an SSP file.');
+        if (!selectedSSPId) {
+            toast.error('Please select an SSP document.');
             return;
         }
 
@@ -219,10 +232,22 @@ export function Dashboard() {
 
         setIsCreating(true);
         try {
+            const selectedDoc = allSSPs.find(s => s.id === selectedSSPId);
+            if (!selectedDoc) throw new Error('Selected SSP not found.');
+
+            // Use file_path (e.g. "userid/timestamp_filename.pdf") not file_name
+            const { data: fileData, error: fileError } = await supabase.storage
+                .from('ssp-documents')
+                .download(selectedDoc.file_path);
+
+            if (fileError) throw new Error('Failed to download SSP: ' + fileError.message);
+
+            const sspFileBlob = new File([fileData], selectedDoc.file_name, { type: fileData.type });
+
             const formData = new FormData();
             formData.append('role', newRole.trim());
             formData.append('company_id', profile.organization_id);
-            formData.append('ssp_file', sspFile);
+            formData.append('ssp_file', sspFileBlob);
 
             const response = await fetch('http://127.0.0.1:8000/api/trainings/create', {
                 method: 'POST',
@@ -238,7 +263,7 @@ export function Dashboard() {
             toast.success('Training added to Training Modules.');
             setShowCreateModal(false);
             setNewRole('');
-            setSspFile(null);
+            setSelectedSSPId('');
         } catch (err) {
             toast.error(err instanceof Error ? err.message : 'Unexpected error.');
         } finally {
@@ -312,11 +337,10 @@ export function Dashboard() {
                             <button
                                 key={item.label}
                                 onClick={() => {
-                                    if (item.href === '/training-modules' || item.href === '/ssp-documents') {
+                                    if (item.href === '/training-modules' || item.href === '/ssp-documents' || item.href === '/roles' || item.href === '/settings') {
                                         navigate(item.href);
                                         return;
                                     }
-
                                     if (!item.active) {
                                         alert(`${item.label} page coming soon!`);
                                     }
@@ -422,7 +446,7 @@ export function Dashboard() {
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-semibold text-gray-900">Training Modules by Role</h3>
                                 <button
-                                    onClick={() => setShowCreateModal(true)}
+                                    onClick={openCreateModal}
                                     className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] transition-colors"
                                 >
                                     <Plus className="w-4 h-4" />
@@ -450,50 +474,50 @@ export function Dashboard() {
                         <div className="overflow-x-auto">
                             <table className="w-full">
                                 <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
-                                    </tr>
+                                <tr>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Module Name</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Last Updated</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Actions</th>
+                                </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                    {trainingModules.map((module) => (
-                                        <tr key={module.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-medium text-gray-900">{module.name}</p>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-sm text-gray-600">{module.role}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(module.status)}`}>
-                                                    {module.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-[#1e3a5f] rounded-full"
-                                                            style={{ width: `${module.completion}%` }}
-                                                        />
-                                                    </div>
-                                                    <span className="text-sm text-gray-600">{module.completion}%</span>
+                                {trainingModules.map((module) => (
+                                    <tr key={module.id} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4">
+                                            <p className="text-sm font-medium text-gray-900">{module.name}</p>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-gray-600">{module.role}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(module.status)}`}>
+                                                {module.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-[#1e3a5f] rounded-full"
+                                                        style={{ width: `${module.completion}%` }}
+                                                    />
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className="text-sm text-gray-600">{module.lastUpdated}</span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <button className="text-gray-400 hover:text-gray-600">
-                                                    <MoreVertical className="w-4 h-4" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                <span className="text-sm text-gray-600">{module.completion}%</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-sm text-gray-600">{module.lastUpdated}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button className="text-gray-400 hover:text-gray-600">
+                                                <MoreVertical className="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
                                 </tbody>
                             </table>
                         </div>
@@ -614,20 +638,55 @@ export function Dashboard() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Training Module</h3>
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                        <input
+                        <select
                             value={newRole}
                             onChange={(e) => setNewRole(e.target.value)}
-                            placeholder="Software Developer"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4"
-                        />
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm"
+                        >
+                            <option value="">Select a role...</option>
+                            <option value="developer">Developer</option>
+                            <option value="security-lead">Security Lead</option>
+                            <option value="team-lead">Team Lead</option>
+                            <option value="compliance-officer">Compliance Officer</option>
+                        </select>
 
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Upload SSP</label>
-                        <input
-                            type="file"
-                            accept=".txt,.pdf"
-                            onChange={(e) => setSspFile(e.target.files?.[0] ?? null)}
-                            className="w-full mb-6"
-                        />
+                        <label className="block text-sm font-medium text-gray-700 mb-1">SSP Document</label>
+                        {allSSPs.length === 0 ? (
+                            <p className="text-sm text-gray-500 mb-4">
+                                No SSP documents found.{' '}
+                                <button
+                                    onClick={() => { setShowCreateModal(false); navigate('/ssp-documents'); }}
+                                    className="text-[#1e3a5f] underline"
+                                >
+                                    Upload one first.
+                                </button>
+                            </p>
+                        ) : (
+                            <div className="space-y-2 mb-6 max-h-48 overflow-y-auto">
+                                {allSSPs.map((doc) => (
+                                    <div
+                                        key={doc.id}
+                                        onClick={() => setSelectedSSPId(doc.id)}
+                                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                            selectedSSPId === doc.id
+                                                ? 'border-[#1e3a5f] bg-blue-50'
+                                                : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                    >
+                                        <FileText className={`w-4 h-4 flex-shrink-0 ${selectedSSPId === doc.id ? 'text-[#1e3a5f]' : 'text-gray-400'}`} />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 truncate">{doc.file_name}</p>
+                                            <p className="text-xs text-gray-500">{formatFileSize(doc.file_size)}</p>
+                                        </div>
+                                        {selectedSSPId === doc.id && (
+                                            <div className="w-4 h-4 rounded-full bg-[#1e3a5f] flex items-center justify-center flex-shrink-0">
+                                                <div className="w-2 h-2 rounded-full bg-white" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="flex justify-end gap-2">
                             <button
