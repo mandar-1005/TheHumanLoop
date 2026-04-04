@@ -440,7 +440,7 @@ export function RolesAssessmentsPage() {
 
     const loadAll = async () => {
         setLoading(true);
-        const { data: empData, error: empError } = await supabase
+        const { data: empData} = await supabase
             .from('profiles')
             .select('id, first_name, last_name, role, organization_id')
             .eq('organization_id', profile!.organization_id)
