@@ -207,6 +207,31 @@ export function Dashboard() {
     const [recentSSPs, setRecentSSPs] = useState<SSPDocRow[]>([]);
     const [sspLoading, setSSPLoading] = useState(true);
 
+    const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
+
+    type ReviewItem = {
+        id: number;
+        company_role: string;
+        created_at: string;
+        status: string;
+        company_id: string;
+    };
+    const [reviewQueue, setReviewQueue] = useState<ReviewItem[]>([]);
+    const [reviewLoading, setReviewLoading] = useState(true);
+    const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
+    const [rejectReason, setRejectReason] = useState("");
+
+    const loadReviewQueue = async () => {
+        setReviewLoading(true);
+        const { data } = await supabase
+            .from("trainings")
+            .select("id, company_role, created_at, status, company_id")
+            .eq("status", "in_review")
+            .order("created_at", { ascending: false });
+        setReviewQueue((data ?? []) as ReviewItem[]);
+        setReviewLoading(false);
+    };
+
     useEffect(() => {
         if (user) {
             supabase
@@ -230,6 +255,8 @@ export function Dashboard() {
                     setRecentSSPs((data ?? []) as SSPDocRow[]);
                     setSSPLoading(false);
                 });
+
+            loadReviewQueue();
         }
     }, [user]);
 
@@ -328,6 +355,8 @@ export function Dashboard() {
             setCreationStep(3);
             await new Promise(r => setTimeout(r, 400));
 
+            const createdId = data?.result?.training_row?.id ?? null;
+            setLastCreatedId(createdId);
             setShowCreateModal(false);
             setNewRole("");
             setSelectedSSPId("");
@@ -338,6 +367,51 @@ export function Dashboard() {
             toast.error(err instanceof Error ? err.message : "Unexpected error.");
         } finally {
             setIsCreating(false);
+        }
+    };
+
+    const submitForReview = async (trainingId: number) => {
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${trainingId}/submit-review`, { method: "POST" });
+            if (!res.ok) throw new Error("Failed to submit for review");
+            toast.success("Training submitted for review.");
+            loadReviewQueue();
+        } catch {
+            toast.error("Failed to submit for review.");
+        }
+    };
+
+    const approveTraining = async (trainingId: number) => {
+        try {
+            const res = await fetch(
+                `http://127.0.0.1:8000/api/trainings/${trainingId}/approve?user_id=${user?.id}`,
+                { method: "POST" },
+            );
+            if (!res.ok) throw new Error("Failed to approve");
+            toast.success("Training approved and published.");
+            setReviewQueue(q => q.filter(r => r.id !== trainingId));
+        } catch {
+            toast.error("Failed to approve training.");
+        }
+    };
+
+    const rejectTraining = async (trainingId: number) => {
+        try {
+            const res = await fetch(
+                `http://127.0.0.1:8000/api/trainings/${trainingId}/reject?user_id=${user?.id}`,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ rejection_reason: rejectReason || null }),
+                },
+            );
+            if (!res.ok) throw new Error("Failed to reject");
+            toast.success("Training rejected.");
+            setReviewQueue(q => q.filter(r => r.id !== trainingId));
+            setShowRejectModal(null);
+            setRejectReason("");
+        } catch {
+            toast.error("Failed to reject training.");
         }
     };
 
@@ -746,6 +820,78 @@ export function Dashboard() {
                         </div>
                     </div>
 
+                    {/* ── Review Queue ── */}
+                    <div className="bg-white rounded-xl border border-gray-200">
+                        <div className="p-6 border-b border-gray-200">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-lg font-semibold text-gray-900">Review Queue</h3>
+                                    {reviewQueue.length > 0 && (
+                                        <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                                            {reviewQueue.length}
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={loadReviewQueue}
+                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                >
+                                    Refresh
+                                </button>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Trainings awaiting admin approval before employees can see them.
+                            </p>
+                        </div>
+
+                        {reviewLoading ? (
+                            <div className="p-6 text-sm text-gray-500">Loading review queue...</div>
+                        ) : reviewQueue.length === 0 ? (
+                            <div className="p-8 text-center">
+                                <CheckCircle className="w-8 h-8 text-green-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500 font-medium">All caught up!</p>
+                                <p className="text-xs text-gray-400 mt-1">No trainings pending review.</p>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-gray-200">
+                                {reviewQueue.map((item) => (
+                                    <div key={item.id} className="px-6 py-4 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm font-medium text-gray-900 capitalize">
+                                                {item.company_role} Training
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                Created {new Date(item.created_at).toLocaleDateString("en-US", {
+                                                    month: "short", day: "numeric", year: "numeric",
+                                                })}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => navigate("/training-modules")}
+                                                className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                            >
+                                                Preview
+                                            </button>
+                                            <button
+                                                onClick={() => approveTraining(item.id)}
+                                                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
+                                            >
+                                                Approve
+                                            </button>
+                                            <button
+                                                onClick={() => setShowRejectModal(item.id)}
+                                                className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
+                                            >
+                                                Reject
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="bg-white rounded-xl border border-gray-200">
                         <div className="p-6 border-b border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-900">
@@ -916,20 +1062,63 @@ export function Dashboard() {
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-1">Training Module Created!</h3>
                         <p className="text-sm text-gray-500 mb-6">
-                            Your new training module has been generated and saved successfully.
+                            Your training module has been saved as a <strong>Draft</strong>. Submit it for review to make it available to employees.
                         </p>
                         <div className="flex flex-col gap-2">
+                            {lastCreatedId && (
+                                <button
+                                    onClick={async () => {
+                                        await submitForReview(lastCreatedId);
+                                        setShowSuccessModal(false);
+                                        setLastCreatedId(null);
+                                    }}
+                                    className="w-full px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
+                                >
+                                    Submit for Review
+                                </button>
+                            )}
                             <button
                                 onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
                                 className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
                             >
-                                View Training Modules →
+                                View Training Modules
                             </button>
                             <button
                                 onClick={() => setShowSuccessModal(false)}
                                 className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                             >
-                                Close
+                                Keep as Draft
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Reject reason modal ── */}
+            {showRejectModal !== null && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-6 shadow-xl">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Reject Training</h3>
+                        <p className="text-sm text-gray-500 mb-4">Optionally provide a reason for rejection.</p>
+                        <textarea
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            rows={3}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-red-400"
+                            placeholder="Reason (optional)..."
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => { setShowRejectModal(null); setRejectReason(""); }}
+                                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-sm"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => rejectTraining(showRejectModal)}
+                                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+                            >
+                                Reject
                             </button>
                         </div>
                     </div>

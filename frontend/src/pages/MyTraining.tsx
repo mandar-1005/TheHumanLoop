@@ -5,9 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import {
     Shield, LogOut, BookOpen,
     BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
-    CreditCard, FileText, CheckCircle, AlertCircle,
-    XCircle, RotateCw, RefreshCw, Sparkles,
+    FileText,
 } from 'lucide-react';
+import AssessmentRenderer from '../components/AssessmentRenderer';
+import type { Assessment } from '../components/AssessmentRenderer';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,11 +21,13 @@ interface AssignedTraining {
         company_role: string;
         training_json: string;
         created_at: string;
+        status?: string;
     } | {
         id: number;
         company_role: string;
         training_json: string;
         created_at: string;
+        status?: string;
     }[];
 }
 
@@ -34,26 +37,6 @@ interface TrainingScore {
     passed: boolean;
     completed_at: string;
 }
-
-type FeedbackStatus = 'correct' | 'partial' | 'incorrect' | null;
-
-type Question = {
-    prompt?: string;
-    rubric?: string;
-    max_score?: number;
-    scenario?: string;
-    grading_rubric?: string;
-    term?: string;
-    definition?: string;
-    question?: string;
-    options?: string[];
-    correct_answer?: string;
-};
-
-type Assessment = {
-    type: string;
-    questions: Question[];
-};
 
 type TrainingContent = {
     study_guide: string;
@@ -129,62 +112,8 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
 function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
     const [contentIndex, setContentIndex] = useState(0);
     const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
-    const [userAnswer, setUserAnswer] = useState('');
-    const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>(null);
-    const [feedback, setFeedback] = useState('');
-    const [isSubmitted, setIsSubmitted] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [isFlipped, setIsFlipped] = useState(false);
-    const [questionIndex, setQuestionIndex] = useState(0);
 
     const content = training.contents[contentIndex];
-    const assessmentType = content?.assessment?.type?.toLowerCase() ?? '';
-    const questions = content?.assessment?.questions ?? [];
-    const currentQuestion = questions[questionIndex];
-
-    const resetAssessment = () => {
-        setUserAnswer('');
-        setFeedbackStatus(null);
-        setFeedback('');
-        setIsSubmitted(false);
-        setIsFlipped(false);
-    };
-
-    const handleSubmit = () => {
-        if (!userAnswer.trim()) return;
-        setIsGenerating(true);
-        setTimeout(() => {
-            const lower = userAnswer.toLowerCase();
-            const rubric = String(currentQuestion?.rubric || currentQuestion?.grading_rubric || '').toLowerCase();
-            const keywords = rubric.match(/\b(validation|encoding|injection|encryption|authentication|authorization|least privilege|owasp|xss|sql|input|output|secure|remediat|isolat|contain|notif|document)\b/g) || [];
-            const matched = keywords.filter(k => lower.includes(k));
-            const ratio = keywords.length > 0 ? matched.length / keywords.length : 0;
-
-            if (ratio >= 0.5) {
-                setFeedbackStatus('correct');
-                setFeedback('Excellent response! You demonstrated strong understanding of the key security concepts and their practical application.');
-            } else if (ratio >= 0.25) {
-                setFeedbackStatus('partial');
-                setFeedback('Good start! You covered some important points. Consider expanding on specific implementation details and FedRAMP control references.');
-            } else {
-                setFeedbackStatus('incorrect');
-                setFeedback('Your response needs more detail. Focus on specific security practices, how to implement them, and which FedRAMP controls they satisfy.');
-            }
-            setIsGenerating(false);
-            setIsSubmitted(true);
-        }, 1500);
-    };
-
-    const getFeedbackStyle = () => {
-        switch (feedbackStatus) {
-            case 'correct': return { box: 'bg-green-50 border-green-200 text-green-800', icon: 'text-green-600', label: '✅ Excellent Work!' };
-            case 'partial': return { box: 'bg-yellow-50 border-yellow-200 text-yellow-800', icon: 'text-yellow-600', label: '⚠️ Partially Correct' };
-            case 'incorrect': return { box: 'bg-red-50 border-red-200 text-red-800', icon: 'text-red-600', label: '❌ Needs Improvement' };
-            default: return { box: '', icon: '', label: '' };
-        }
-    };
-
-    const feedbackStyle = getFeedbackStyle();
 
     if (!content) return <p className="text-sm text-gray-500 p-6">No training content available.</p>;
 
@@ -195,7 +124,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                     {training.contents.map((_c, i) => (
                         <button
                             key={i}
-                            onClick={() => { setContentIndex(i); resetAssessment(); setStudyMode('guide'); }}
+                            onClick={() => { setContentIndex(i); setStudyMode('guide'); }}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                                 contentIndex === i ? 'bg-[#1e3a5f] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
                             }`}
@@ -208,7 +137,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
 
             <div className="flex gap-2">
                 <button
-                    onClick={() => { setStudyMode('guide'); resetAssessment(); }}
+                    onClick={() => setStudyMode('guide')}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                         studyMode === 'guide' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
@@ -216,13 +145,13 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                     <BookOpen className="w-4 h-4" /> Study Guide
                 </button>
                 <button
-                    onClick={() => { setStudyMode('assessment'); resetAssessment(); }}
+                    onClick={() => setStudyMode('assessment')}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                         studyMode === 'assessment' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                 >
-                    {assessmentType.includes('flashcard') ? <CreditCard className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                    {content.assessment.type}
+                    <FileText className="w-4 h-4" />
+                    {content.assessment?.type || 'Assessment'}
                 </button>
             </div>
 
@@ -232,144 +161,9 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                 </div>
             )}
 
-            {studyMode === 'assessment' && (
-                <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-6">
-                    <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                            {content.assessment.type} Assessment
-                        </p>
-                        {questions.length > 1 && (
-                            <span className="text-xs text-gray-500">
-                                Question {questionIndex + 1} of {questions.length}
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Flashcards */}
-                    {assessmentType.includes('flashcard') && currentQuestion && (
-                        <div className="space-y-4">
-                            <div onClick={() => setIsFlipped(!isFlipped)} className="relative h-56 cursor-pointer">
-                                <div
-                                    className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
-                                    style={{ background: isFlipped ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)' }}
-                                >
-                                    <div>
-                                        <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
-                                        <p className="text-lg text-white font-medium">{isFlipped ? currentQuestion.definition : currentQuestion.term}</p>
-                                        <p className="text-xs text-white/50 mt-6">Click to flip</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex justify-between">
-                                <button onClick={() => { setQuestionIndex(q => Math.max(0, q - 1)); setIsFlipped(false); }} disabled={questionIndex === 0} className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40">
-                                    <ChevronLeft className="w-4 h-4" /> Previous
-                                </button>
-                                <button onClick={() => setIsFlipped(!isFlipped)} className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white">
-                                    <RotateCw className="w-4 h-4" /> Flip
-                                </button>
-                                <button onClick={() => { setQuestionIndex(q => Math.min(questions.length - 1, q + 1)); setIsFlipped(false); }} disabled={questionIndex === questions.length - 1} className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40">
-                                    Next <ChevronRight className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Multiple Choice */}
-                    {assessmentType.includes('multiple') && currentQuestion && (
-                        <div className="space-y-4">
-                            <p className="text-sm font-medium text-gray-900">{currentQuestion.question || currentQuestion.prompt}</p>
-                            <div className="space-y-2">
-                                {(currentQuestion.options || []).map((option, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => !isSubmitted && setUserAnswer(option)}
-                                        className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
-                                            userAnswer === option ? 'border-[#1e3a5f] bg-blue-50 text-[#1e3a5f]' : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                                        } ${isSubmitted ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                                    >
-                                        {option}
-                                    </button>
-                                ))}
-                            </div>
-                            {!isSubmitted ? (
-                                <button
-                                    onClick={() => {
-                                        if (!userAnswer) return;
-                                        setIsSubmitted(true);
-                                        const correct = userAnswer === currentQuestion.correct_answer;
-                                        setFeedbackStatus(correct ? 'correct' : 'incorrect');
-                                        setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${currentQuestion.correct_answer}`);
-                                    }}
-                                    disabled={!userAnswer}
-                                    className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40"
-                                >
-                                    Submit Answer
-                                </button>
-                            ) : (
-                                <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200">Try Again</button>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Short Response / Case Study */}
-                    {(assessmentType.includes('short') || assessmentType.includes('case')) && currentQuestion && (
-                        <div className="space-y-4">
-                            {currentQuestion.scenario && (
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <p className="text-xs font-semibold text-blue-700 mb-2">SCENARIO</p>
-                                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{currentQuestion.scenario}</p>
-                                </div>
-                            )}
-                            {currentQuestion.prompt && (
-                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                                    <p className="text-xs font-semibold text-amber-700 mb-2">QUESTION</p>
-                                    <p className="text-sm text-gray-800 leading-relaxed">{currentQuestion.prompt}</p>
-                                </div>
-                            )}
-                            {currentQuestion.max_score && <p className="text-xs text-gray-500">Max score: {currentQuestion.max_score} points</p>}
-                            <textarea
-                                value={userAnswer}
-                                onChange={(e) => setUserAnswer(e.target.value)}
-                                disabled={isSubmitted}
-                                rows={6}
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                                placeholder="Write your detailed response here..."
-                            />
-                            {!isSubmitted ? (
-                                <button onClick={handleSubmit} disabled={!userAnswer.trim()} className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
-                                    <CheckCircle className="w-4 h-4" /> Submit Response
-                                </button>
-                            ) : (
-                                <button onClick={resetAssessment} className="w-full py-3 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 flex items-center justify-center gap-2">
-                                    <RotateCw className="w-4 h-4" /> Try Again
-                                </button>
-                            )}
-                            {isGenerating && (
-                                <div className="flex items-center gap-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                    <Sparkles className="w-5 h-5 text-blue-600 animate-spin" />
-                                    <span className="text-sm font-medium text-blue-700">Analyzing your response...</span>
-                                </div>
-                            )}
-                            {isSubmitted && feedbackStatus && !isGenerating && (
-                                <div className={`p-4 border-2 rounded-lg ${feedbackStyle.box}`}>
-                                    <div className="flex items-start gap-3 mb-3">
-                                        <div className={feedbackStyle.icon}>
-                                            {feedbackStatus === 'correct' && <CheckCircle className="w-5 h-5" />}
-                                            {feedbackStatus === 'partial' && <AlertCircle className="w-5 h-5" />}
-                                            {feedbackStatus === 'incorrect' && <XCircle className="w-5 h-5" />}
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="text-sm font-semibold mb-1">{feedbackStyle.label}</p>
-                                            <p className="text-sm leading-relaxed">{feedback}</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={handleSubmit} className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                                        <RefreshCw className="w-3.5 h-3.5" /> Regenerate Feedback
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {studyMode === 'assessment' && content.assessment && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6">
+                    <AssessmentRenderer assessment={content.assessment} role={training.role} />
                 </div>
             )}
         </div>
@@ -459,13 +253,18 @@ export function MyTrainingPage() {
                     assigned_at,
                     due_date,
                     training:training_id (
-                        id, company_role, training_json, created_at
+                        id, company_role, training_json, created_at, status
                     )
                 `)
                 .eq('user_id', user.id)
                 .order('assigned_at', { ascending: false });
 
-            setAssignments((assignData ?? []) as unknown as AssignedTraining[]);
+            const allAssignments = (assignData ?? []) as unknown as AssignedTraining[];
+            const publishedOnly = allAssignments.filter(a => {
+                const t = Array.isArray(a.training) ? a.training[0] : a.training;
+                return !t?.status || t.status === 'published';
+            });
+            setAssignments(publishedOnly);
 
             const { data: scoreData } = await supabase
                 .from('training_evidence')

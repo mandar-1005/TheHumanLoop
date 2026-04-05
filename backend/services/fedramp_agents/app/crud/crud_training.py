@@ -1,5 +1,13 @@
 from app.database.supabase_client import supabase
 
+VALID_STATUSES = ("draft", "in_review", "published", "rejected")
+VALID_TRANSITIONS = {
+    "draft": ("in_review",),
+    "in_review": ("published", "rejected"),
+    "rejected": ("draft", "in_review"),
+    "published": (),
+}
+
 
 def insert_training(company_id: str, role: str, training_json: str) -> dict | None:
     response = (
@@ -9,11 +17,52 @@ def insert_training(company_id: str, role: str, training_json: str) -> dict | No
                 "company_id": company_id,
                 "company_role": role,
                 "training_json": training_json,
+                "status": "draft",
             }
         )
         .execute()
     )
     return (response.data or [None])[0]
+
+
+def get_training_by_id(training_id: int) -> dict | None:
+    response = (
+        supabase.table("trainings")
+        .select("*")
+        .eq("id", training_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def update_training_status(
+    training_id: int, new_status: str, rejection_reason: str | None = None,
+) -> dict | None:
+    payload: dict = {"status": new_status}
+    if new_status == "rejected" and rejection_reason:
+        payload["rejection_reason"] = rejection_reason
+    if new_status != "rejected":
+        payload["rejection_reason"] = None
+
+    response = (
+        supabase.table("trainings")
+        .update(payload)
+        .eq("id", training_id)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def get_trainings_by_status(status: str) -> list[dict]:
+    response = (
+        supabase.table("trainings")
+        .select("*")
+        .eq("status", status)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return response.data or []
 
 
 def get_profile_role(user_id: str) -> str | None:

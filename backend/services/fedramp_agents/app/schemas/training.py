@@ -1,28 +1,37 @@
-from typing import Any
-from pydantic import BaseModel
+from typing import Any, List, Optional, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class CreateTrainingResponse(BaseModel):
     success: bool
     message: str
     result: dict[str, Any]
-from typing import List, Optional, Literal
-from uuid import UUID
 
-from pydantic import BaseModel, Field
+
+BLOOM_LEVELS = (
+    "Remembering", "Understanding", "Applying",
+    "Analyzing", "Evaluating", "Creating",
+)
+
+ASSESSMENT_FORMATS = (
+    "flashcard", "multiple_choice", "short_response",
+    "case_study", "evaluation", "open_ended",
+)
 
 
 class AssessmentQuestion(BaseModel):
     question_id: str
-    prompt: str
+    prompt: str = ""
     role: str = "developer"
     question_type: str = Field(
         default="multiple_choice",
-        description="multiple_choice | descriptive",
+        description="One of: multiple_choice, descriptive, flashcard, short_response, case_study, evaluation, open_ended",
     )
     bloom_level: Optional[str] = Field(
         default=None,
-        description="Bloom's taxonomy level assigned by the BloomAgent",
+        description="Bloom's taxonomy level: Remembering, Understanding, Applying, Analyzing, Evaluating, Creating",
     )
     rubric: Optional[str] = ""
     options: List[str] = Field(default_factory=list)
@@ -51,3 +60,7 @@ class TrainingFeedbackRequest(BaseModel):
     training_id: int
     user_id: UUID
     positive_score: Literal[-1, 1]
+
+
+class ReviewAction(BaseModel):
+    rejection_reason: Optional[str] = None
