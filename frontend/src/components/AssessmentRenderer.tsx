@@ -3,7 +3,9 @@ import {
     ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     AlertCircle, XCircle, RefreshCw, Sparkles, FileText,
     CreditCard, PenTool, BookOpen, Scale, Lightbulb, Pencil,
+    List, AlignLeft,
 } from 'lucide-react';
+import { useRememberingViewMode, type RememberingViewMode } from '../hooks/useRememberingViewMode';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +260,41 @@ function QuestionNav({
     );
 }
 
+// ─── Remembering: bullet / long-form (same term+definition data as flashcards) ─
+
+function BulletRememberingView({ questions }: { questions: Question[] }) {
+    return (
+        <ul className="max-h-[min(28rem,70vh)] overflow-y-auto space-y-3 pr-1 list-none m-0 p-0">
+            {questions.map((q, i) => (
+                <li
+                    key={i}
+                    className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-800"
+                >
+                    <p className="font-semibold text-gray-900 whitespace-pre-wrap">{q.term || '—'}</p>
+                    <p className="mt-2 text-gray-700 whitespace-pre-wrap leading-relaxed">{q.definition || '—'}</p>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function LongFormRememberingView({ questions }: { questions: Question[] }) {
+    return (
+        <div className="max-h-[min(32rem,75vh)] overflow-y-auto space-y-8 pr-1">
+            {questions.map((q, i) => (
+                <section key={i} className="rounded-xl border border-gray-100 bg-white px-6 py-5 shadow-sm">
+                    <h3 className="text-base font-semibold text-gray-900 whitespace-pre-wrap">
+                        {q.term || '—'}
+                    </h3>
+                    <p className="mt-4 text-sm text-gray-700 leading-7 whitespace-pre-wrap">
+                        {q.definition || '—'}
+                    </p>
+                </section>
+            ))}
+        </div>
+    );
+}
+
 // ─── 1. Flashcard Assessment (Remembering) ──────────────────────────────────
 
 function FlashcardAssessment({
@@ -421,6 +458,74 @@ function FlashcardAssessment({
                 >
                     Next <ChevronRight className="w-4 h-4" />
                 </button>
+            </div>
+        </div>
+    );
+}
+
+function RememberingPresentation({
+    assessment,
+    questions,
+    enableEdit,
+    onQuestionsChange,
+    persistFlashcards,
+}: {
+    assessment: Assessment;
+    questions: Question[];
+    enableEdit?: boolean;
+    onQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
+}) {
+    const { mode, setMode } = useRememberingViewMode(assessment);
+
+    const options: { id: RememberingViewMode; label: string; icon: typeof List }[] = [
+        { id: 'bullet', label: 'Bullet', icon: List },
+        { id: 'flashcard', label: 'Flashcard', icon: CreditCard },
+        { id: 'long-form', label: 'Long-form', icon: AlignLeft },
+    ];
+
+    return (
+        <div className="space-y-4">
+            <div
+                role="tablist"
+                aria-label="Remembering display format"
+                className="flex flex-wrap gap-2"
+            >
+                {options.map(({ id, label, icon: Icon }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        id={`remembering-mode-${id}`}
+                        aria-selected={mode === id}
+                        aria-controls="remembering-content-panel"
+                        onClick={() => setMode(id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                            mode === id
+                                ? 'bg-[#1e3a5f] text-white shadow-md'
+                                : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                        }`}
+                    >
+                        <Icon className="w-4 h-4" />
+                        {label}
+                    </button>
+                ))}
+            </div>
+            <div
+                role="tabpanel"
+                id="remembering-content-panel"
+                aria-labelledby={`remembering-mode-${mode}`}
+            >
+                {mode === 'bullet' && <BulletRememberingView questions={questions} />}
+                {mode === 'flashcard' && (
+                    <FlashcardAssessment
+                        questions={questions}
+                        enableEdit={enableEdit}
+                        onQuestionsChange={onQuestionsChange}
+                        persistFlashcards={persistFlashcards}
+                    />
+                )}
+                {mode === 'long-form' && <LongFormRememberingView questions={questions} />}
             </div>
         </div>
     );
@@ -860,7 +965,8 @@ export default function AssessmentRenderer({
             </div>
 
             {format === 'flashcard' && (
-                <FlashcardAssessment
+                <RememberingPresentation
+                    assessment={assessment}
                     questions={questions}
                     enableEdit={enableFlashcardEdit}
                     onQuestionsChange={onFlashcardQuestionsChange}
