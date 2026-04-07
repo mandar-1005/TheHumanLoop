@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import {
     ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     AlertCircle, XCircle, RefreshCw, Sparkles, FileText,
-    CreditCard, PenTool, BookOpen, Scale, Lightbulb,
+    CreditCard, PenTool, BookOpen, Scale, Lightbulb, Pencil,
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -260,48 +260,162 @@ function QuestionNav({
 
 // ─── 1. Flashcard Assessment (Remembering) ──────────────────────────────────
 
-function FlashcardAssessment({ questions }: { questions: Question[] }) {
+function FlashcardAssessment({
+    questions,
+    enableEdit,
+    onQuestionsChange,
+    persistFlashcards,
+}: {
+    questions: Question[];
+    enableEdit?: boolean;
+    onQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
+}) {
     const [index, setIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [draftTerm, setDraftTerm] = useState('');
+    const [draftDefinition, setDraftDefinition] = useState('');
+
     const q = questions[index];
     if (!q) return null;
 
+    const canEdit = Boolean(enableEdit && onQuestionsChange);
+
+    const startEdit = (e: MouseEvent) => {
+        e.stopPropagation();
+        setDraftTerm(q.term ?? '');
+        setDraftDefinition(q.definition ?? '');
+        setEditing(true);
+        setIsFlipped(false);
+    };
+
+    const cancelEdit = () => {
+        setEditing(false);
+    };
+
+    const saveEdit = () => {
+        if (!onQuestionsChange) return;
+        const next = questions.map((item, i) =>
+            i === index ? { ...item, term: draftTerm, definition: draftDefinition } : item,
+        );
+        onQuestionsChange(next);
+        setEditing(false);
+    };
+
+    const goPrev = () => {
+        setIndex(i => Math.max(0, i - 1));
+        setIsFlipped(false);
+        setEditing(false);
+    };
+
+    const goNext = () => {
+        setIndex(i => Math.min(questions.length - 1, i + 1));
+        setIsFlipped(false);
+        setEditing(false);
+    };
+
     return (
         <div className="space-y-4">
-            <div onClick={() => setIsFlipped(!isFlipped)} className="relative h-56 cursor-pointer">
-                <div
-                    className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
-                    style={{
-                        background: isFlipped
-                            ? 'linear-gradient(135deg, #16a34a, #15803d)'
-                            : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)',
-                    }}
-                >
-                    <div>
-                        <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
-                        <p className="text-lg text-white font-medium">
-                            {isFlipped ? q.definition : q.term}
-                        </p>
-                        <p className="text-xs text-white/50 mt-6">Click to flip</p>
+            <div className="relative">
+                {canEdit && !editing && (
+                    <button
+                        type="button"
+                        onClick={startEdit}
+                        className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/90 bg-black/25 hover:bg-black/40 border border-white/20"
+                        aria-label="Edit flashcard"
+                    >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                    </button>
+                )}
+
+                {editing ? (
+                    <div
+                        className="min-h-56 rounded-xl p-6 border border-gray-200 bg-white space-y-3 shadow-sm"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">TERM</label>
+                            <textarea
+                                value={draftTerm}
+                                onChange={e => setDraftTerm(e.target.value)}
+                                rows={3}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#1e3a5f]"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">DEFINITION</label>
+                            <textarea
+                                value={draftDefinition}
+                                onChange={e => setDraftDefinition(e.target.value)}
+                                rows={4}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#1e3a5f]"
+                            />
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={saveEdit}
+                                disabled={persistFlashcards}
+                                className="px-4 py-2 text-sm font-medium text-white bg-[#1e3a5f] rounded-lg hover:bg-[#152d4a] disabled:opacity-50"
+                            >
+                                Save
+                            </button>
+                            <button
+                                type="button"
+                                onClick={cancelEdit}
+                                disabled={persistFlashcards}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div
+                        onClick={() => setIsFlipped(!isFlipped)}
+                        className="relative h-56 cursor-pointer"
+                    >
+                        <div
+                            className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
+                            style={{
+                                background: isFlipped
+                                    ? 'linear-gradient(135deg, #16a34a, #15803d)'
+                                    : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)',
+                            }}
+                        >
+                            <div>
+                                <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
+                                <p className="text-lg text-white font-medium whitespace-pre-wrap">
+                                    {isFlipped ? q.definition : q.term}
+                                </p>
+                                <p className="text-xs text-white/50 mt-6">Click to flip</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="flex justify-between">
                 <button
-                    onClick={() => { setIndex(i => Math.max(0, i - 1)); setIsFlipped(false); }}
+                    type="button"
+                    onClick={goPrev}
                     disabled={index === 0}
                     className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
                 >
                     <ChevronLeft className="w-4 h-4" /> Previous
                 </button>
                 <button
+                    type="button"
                     onClick={() => setIsFlipped(!isFlipped)}
-                    className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white"
+                    disabled={editing}
+                    className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white disabled:opacity-40"
                 >
                     <RotateCw className="w-4 h-4" /> Flip
                 </button>
                 <button
-                    onClick={() => { setIndex(i => Math.min(questions.length - 1, i + 1)); setIsFlipped(false); }}
+                    type="button"
+                    onClick={goNext}
                     disabled={index === questions.length - 1}
                     className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
                 >
@@ -710,9 +824,15 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 export default function AssessmentRenderer({
     assessment,
     role = 'developer',
+    enableFlashcardEdit,
+    onFlashcardQuestionsChange,
+    persistFlashcards,
 }: {
     assessment: Assessment;
     role?: string;
+    enableFlashcardEdit?: boolean;
+    onFlashcardQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
 }) {
     const format = resolveFormat(assessment);
     const meta = FORMAT_META[format];
@@ -739,7 +859,14 @@ export default function AssessmentRenderer({
                 )}
             </div>
 
-            {format === 'flashcard' && <FlashcardAssessment questions={questions} />}
+            {format === 'flashcard' && (
+                <FlashcardAssessment
+                    questions={questions}
+                    enableEdit={enableFlashcardEdit}
+                    onQuestionsChange={onFlashcardQuestionsChange}
+                    persistFlashcards={persistFlashcards}
+                />
+            )}
             {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} />}
             {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} />}
             {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} />}
