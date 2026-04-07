@@ -4,7 +4,7 @@ import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Set
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
-import type { Assessment } from '../components/AssessmentRenderer';
+import type { Assessment, Question } from '../components/AssessmentRenderer';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,10 @@ function parseTrainingJson(raw: unknown): TrainingContent[] {
         // ignore parse errors
     }
     return [];
+}
+
+function cloneTrainingContents(contents: TrainingContent[]): TrainingContent[] {
+    return JSON.parse(JSON.stringify(contents)) as TrainingContent[];
 }
 
 const STATUS_MAP: Record<string, TrainingStatus> = {
@@ -153,11 +157,21 @@ function StatusBadge({ status }: { status: TrainingStatus }) {
 
 // ─── Adaptive Study UI ─────────────────────────────────────────────────────
 
-function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
+function AdaptiveStudyUI({
+    training,
+    workingContents,
+    onFlashcardQuestionsChange,
+    persistFlashcards,
+}: {
+    training: TrainingModule;
+    workingContents: TrainingContent[];
+    onFlashcardQuestionsChange?: (contentIndex: number, questions: Question[]) => void;
+    persistFlashcards?: boolean;
+}) {
     const [contentIndex, setContentIndex] = useState(0);
     const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
 
-    const content = training.contents[contentIndex];
+    const content = workingContents[contentIndex];
 
     if (!content) {
         return <p className="text-sm text-gray-500 p-6">No training content available.</p>;
@@ -165,9 +179,9 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
 
     return (
         <div className="space-y-6">
-            {training.contents.length > 1 && (
+            {workingContents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
-                    {training.contents.map((_c, i) => {
+                    {workingContents.map((_c, i) => {
                         const label = training.role === 'Software Developer' && i === 0 ? 'Software Developer'
                             : training.role === 'Development Lead' && i === 1 ? 'Development Lead'
                                 : `Module ${i + 1}`;
@@ -215,7 +229,17 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
 
             {studyMode === 'assessment' && content.assessment && (
                 <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <AssessmentRenderer assessment={content.assessment} role={training.role} />
+                    <AssessmentRenderer
+                        assessment={content.assessment}
+                        role={training.role}
+                        enableFlashcardEdit={Boolean(onFlashcardQuestionsChange)}
+                        onFlashcardQuestionsChange={
+                            onFlashcardQuestionsChange
+                                ? (questions) => onFlashcardQuestionsChange(contentIndex, questions)
+                                : undefined
+                        }
+                        persistFlashcards={persistFlashcards}
+                    />
                 </div>
             )}
         </div>
@@ -300,8 +324,18 @@ export function TrainingModulesPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<TrainingModule | null>(null);
+    const [workingContents, setWorkingContents] = useState<TrainingContent[]>([]);
+    const [flashcardPersist, setFlashcardPersist] = useState(false);
+    const [flashcardSaveMsg, setFlashcardSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
     const total = useMemo(() => rows.length, [rows]);
+
+    useEffect(() => {
+        if (selected) {
+            setWorkingContents(cloneTrainingContents(selected.contents));
+            setFlashcardSaveMsg(null);
+        }
+    }, [selected?.id]);
 
     useEffect(() => {
         let mounted = true;
@@ -331,6 +365,38 @@ export function TrainingModulesPage() {
         return () => { mounted = false; };
     }, []);
 
+    const handleFlashcardQuestionsChange = async (contentIndex: number, questions: Question[]) => {
+        if (!selected) return;
+
+        let nextContents: TrainingContent[] = [];
+        setWorkingContents(prev => {
+            nextContents = prev.map((c, i) =>
+                i === contentIndex ? { ...c, assessment: { ...c.assessment, questions } } : c,
+            );
+            return nextContents;
+        });
+
+        setFlashcardPersist(true);
+        setFlashcardSaveMsg(null);
+
+        const trainingId = typeof selected.id === 'string' ? Number(selected.id) : selected.id;
+        const { error: updateError } = await supabase
+            .from('trainings')
+            .update({ training_json: JSON.stringify(nextContents) })
+            .eq('id', trainingId);
+
+        setFlashcardPersist(false);
+
+        if (updateError) {
+            setFlashcardSaveMsg({ type: 'err', text: updateError.message });
+            return;
+        }
+
+        setFlashcardSaveMsg({ type: 'ok', text: 'Flashcards saved.' });
+        setRows(prev => prev.map(r => (r.id === selected.id ? { ...r, contents: nextContents } : r)));
+        setSelected(prev => (prev && prev.id === selected.id ? { ...prev, contents: nextContents } : prev));
+    };
+
     // ── Detail view ──
     if (selected) {
         return (
@@ -353,7 +419,25 @@ export function TrainingModulesPage() {
                             <p className="text-sm text-gray-500 mt-1">Created {selected.createdAt}</p>
                         </div>
 
-                        <AdaptiveStudyUI training={selected} />
+                        {flashcardSaveMsg && (
+                            <div
+                                className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+                                    flashcardSaveMsg.type === 'ok'
+                                        ? 'bg-green-50 border-green-200 text-green-800'
+                                        : 'bg-red-50 border-red-200 text-red-800'
+                                }`}
+                            >
+                                {flashcardSaveMsg.text}
+                            </div>
+                        )}
+
+                        <AdaptiveStudyUI
+                            key={selected.id}
+                            training={selected}
+                            workingContents={workingContents}
+                            onFlashcardQuestionsChange={handleFlashcardQuestionsChange}
+                            persistFlashcards={flashcardPersist}
+                        />
                     </main>
                 </div>
             </div>
@@ -401,7 +485,11 @@ export function TrainingModulesPage() {
                             {!loading && !error && rows.map((row) => (
                                 <tr
                                     key={row.id}
-                                    onClick={() => setSelected(row)}
+                                    onClick={() => {
+                                        setSelected(row);
+                                        setWorkingContents(cloneTrainingContents(row.contents));
+                                        setFlashcardSaveMsg(null);
+                                    }}
                                     className="hover:bg-blue-50 cursor-pointer transition-colors"
                                 >
                                     <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{row.role}</td>
