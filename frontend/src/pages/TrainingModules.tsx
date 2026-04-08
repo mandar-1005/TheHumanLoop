@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut,  Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment, Question } from '../components/AssessmentRenderer';
-
+import { AIGradingChat } from '../components/AIGradingChat';
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 type TrainingStatus = 'Published' | 'In Review' | 'Draft' | 'Rejected';
@@ -158,18 +158,18 @@ function StatusBadge({ status }: { status: TrainingStatus }) {
 // ─── Adaptive Study UI ─────────────────────────────────────────────────────
 
 function AdaptiveStudyUI({
-    training,
-    workingContents,
-    onFlashcardQuestionsChange,
-    persistFlashcards,
-}: {
+                             training,
+                             workingContents,
+                             onFlashcardQuestionsChange,
+                             persistFlashcards,
+                         }: {
     training: TrainingModule;
     workingContents: TrainingContent[];
     onFlashcardQuestionsChange?: (contentIndex: number, questions: Question[]) => void;
     persistFlashcards?: boolean;
 }) {
     const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
+    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
 
     const content = workingContents[contentIndex];
 
@@ -200,7 +200,7 @@ function AdaptiveStudyUI({
                 </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
                 <button
                     onClick={() => setStudyMode('guide')}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -218,6 +218,15 @@ function AdaptiveStudyUI({
                 >
                     <FileText className="w-4 h-4" />
                     {content.assessment?.type || 'Assessment'}
+                </button>
+                <button
+                    onClick={() => setStudyMode('chat')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'chat' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
+                    <Sparkles className="w-4 h-4" />
+                    AI Grading Chat
                 </button>
             </div>
 
@@ -241,6 +250,11 @@ function AdaptiveStudyUI({
                         persistFlashcards={persistFlashcards}
                     />
                 </div>
+            )}
+
+            {/* ── AI Grading Chat ── */}
+            {studyMode === 'chat' && (
+                <AIGradingChat training={training} />
             )}
         </div>
     );
