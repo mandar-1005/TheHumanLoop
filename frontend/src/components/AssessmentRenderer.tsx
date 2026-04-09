@@ -107,18 +107,24 @@ async function gradeAnswer(
     rubric: string,
     correctAnswer?: string,
 ): Promise<GradeResult> {
+    // Matches GradeAssessmentRequest schema exactly
     const body = {
         questions: [{
             question_id: questionId,
-            prompt,
-            role,
+            prompt: prompt || 'Answer the following question.',
+            role: role || 'developer',
             question_type: questionType,
-            rubric,
-            options: [],
+            bloom_level: null,
+            rubric: rubric || '',
+            options: [] as string[],
             correct_answer: correctAnswer ?? null,
+            answer_key: null,
         }],
         selected_answers: [{ question_id: questionId, answer }],
+        temperature: 0.2,
     };
+
+    console.log('[gradeAnswer] sending:', JSON.stringify(body, null, 2));
 
     const res = await fetch(GRADING_API, {
         method: 'POST',
@@ -126,12 +132,22 @@ async function gradeAnswer(
         body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error('Grading request failed');
+    if (!res.ok) {
+        const errText = await res.text();
+        console.error('[gradeAnswer] error ' + res.status + ':', errText);
+        throw new Error('Grading failed ' + res.status + ': ' + errText);
+    }
 
     const data = await res.json();
+    console.log('[gradeAnswer] response:', data);
     const detail = data.details?.[0] ?? {};
+
+    // Normalize score: API may return 0-1 float or 0-100 integer
+    const rawScore: number = detail.score ?? 0;
+    const normalizedScore = rawScore <= 1 ? rawScore : rawScore / 100;
+
     return {
-        score: detail.score ?? 0,
+        score: normalizedScore,   // always 0-1 internally; multiply by 100 when saving
         feedback: detail.feedback ?? '',
         is_correct: detail.is_correct ?? false,
         strengths: detail.strengths,
@@ -464,7 +480,7 @@ function FlashcardAssessment({
             {index === questions.length - 1 && onComplete && (
                 <button
                     onClick={() => onComplete(100, true)}
-                    className="w-full py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                    className="w-full mt-3 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
                 >
                     ✓ Mark Training Complete
                 </button>
@@ -479,6 +495,7 @@ function RememberingPresentation({
                                      enableEdit,
                                      onQuestionsChange,
                                      persistFlashcards,
+                                     onComplete,
                                  }: {
     assessment: Assessment;
     questions: Question[];
@@ -534,6 +551,7 @@ function RememberingPresentation({
                         enableEdit={enableEdit}
                         onQuestionsChange={onQuestionsChange}
                         persistFlashcards={persistFlashcards}
+                        onComplete={onComplete}
                     />
                 )}
                 {mode === 'long-form' && <LongFormRememberingView questions={questions} />}
@@ -628,9 +646,15 @@ function useDescriptiveGrading(role: string, onComplete?: (score: number, passed
         if (!answer.trim()) return;
         setGenerating(true);
         try {
-            const rubric = q.rubric || q.grading_rubric || '';
+            const rawRubric: unknown = q.rubric || q.grading_rubric || '';
+            // Backend expects rubric as plain string — serialize if it's a JSON object
+            const rubric = typeof rawRubric === 'string'
+                ? rawRubric
+                : JSON.stringify(rawRubric);
+            // Include scenario in prompt so the grader has full context
+            const fullPrompt = [q.scenario, q.prompt || q.question].filter(Boolean).join('\n\n') || 'Answer the following question.';
             const result = await gradeAnswer(
-                `q-${Date.now()}`, q.prompt || q.question || '', answer,
+                `q-${Date.now()}`, fullPrompt, answer,
                 questionType, role, rubric, q.correct_answer,
             );
             setGradeResult(result);
@@ -638,13 +662,10 @@ function useDescriptiveGrading(role: string, onComplete?: (score: number, passed
             else if (result.score >= 0.4) setStatus('partial');
             else setStatus('incorrect');
             setFeedback(result.feedback || 'Grading complete.');
-            const scoreInt = Math.round(result.score * 100);
-            onComplete?.(scoreInt, result.score >= 0.7);
+            onComplete?.(Math.round(result.score * 100), result.score >= 0.7);
         } catch {
             setStatus('partial');
             setFeedback('Could not reach grading service. Please try again.');
-            // On error, mark as completed with 100/passed so user can still get certificate
-            onComplete?.(100, true);
         }
         setGenerating(false);
         setSubmitted(true);
@@ -687,7 +708,7 @@ function ShortResponseAssessment({ questions, role, onComplete }: { questions: Q
 
             {!g.submitted ? (
                 <button
-                    onClick={() => void g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'short_response')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -748,7 +769,7 @@ function CaseStudyAssessment({ questions, role, onComplete }: { questions: Quest
 
             {!g.submitted ? (
                 <button
-                    onClick={() => void g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'case_study')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -829,7 +850,7 @@ function EvaluationAssessment({ questions, role, onComplete }: { questions: Ques
 
             {!g.submitted ? (
                 <button
-                    onClick={() => void g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'evaluation')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -873,7 +894,7 @@ function OpenEndedAssessment({ questions, role, onComplete }: { questions: Quest
 
     const handleSubmit = () => {
         if (sections) g.setAnswer(combinedAnswer);
-        g.submit(q, 'descriptive');
+        void g.submit(q, 'short_response');
     };
 
     const isAnswerEmpty = sections

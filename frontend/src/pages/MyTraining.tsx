@@ -309,16 +309,64 @@ export function MyTrainingPage() {
 
     const handleComplete = async (score: number, passed: boolean) => {
         if (!user || !activeTraining) return;
-        await supabase.from('training_evidence').upsert({
+        // Clamp score to valid 0-100 integer range for DB check constraint
+        const safeScore = Math.min(100, Math.max(0, Math.round(score)));
+
+        const orgId = profile?.organization_id;
+        if (!orgId) {
+            console.error('handleComplete: organization_id missing from profile', profile);
+            return;
+        }
+
+        const payload = {
             user_id: user.id,
             training_id: Number(activeTraining.id),
-            organization_id: profile?.organization_id ?? '',
+            organization_id: orgId,
             company_role: activeTraining.role,
-            score,
-            passed,
+            score: safeScore,
+            // passed is a generated column (score >= 70) — do not insert it
             assessment_type: activeTraining.contents[0]?.assessment?.type ?? null,
             completed_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,training_id' });
+        };
+
+        console.log('Saving training_evidence:', payload);
+
+        // Check if a record already exists for this user + training
+        const { data: existing } = await supabase
+            .from('training_evidence')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('training_id', payload.training_id)
+            .maybeSingle();
+
+        let saveError;
+        if (existing?.id) {
+            // Update existing row
+            const { error } = await supabase
+                .from('training_evidence')
+                .update({
+                    score: payload.score,
+                    // passed is generated — not updatable
+                    assessment_type: payload.assessment_type,
+                    completed_at: payload.completed_at,
+                })
+                .eq('id', existing.id);
+            saveError = error;
+        } else {
+            // Insert new row
+            const { error } = await supabase
+                .from('training_evidence')
+                .insert(payload);
+            saveError = error;
+        }
+
+        if (saveError) {
+            console.error('training_evidence save failed:', saveError);
+        } else {
+            console.log('training_evidence saved successfully');
+        }
+
+        // Refresh scores
         const { data } = await supabase
             .from('training_evidence')
             .select('training_id, score, passed, completed_at')
