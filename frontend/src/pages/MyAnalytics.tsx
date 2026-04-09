@@ -14,6 +14,7 @@ interface EvidenceRow {
     passed: boolean;
     completed_at: string;
     assessment_type?: string | null;
+    training_name?: string | null;
 }
 
 function Sidebar() {
@@ -74,7 +75,7 @@ function CertModal({ ev, name, org, onClose }: { ev: EvidenceRow; name: string; 
                     <p className="text-sm text-gray-500 mb-2">This certifies that</p>
                     <p className="text-2xl font-bold text-gray-900 mb-2">{name}</p>
                     <p className="text-sm text-gray-500 mb-1">has successfully completed</p>
-                    <p className="text-xl font-semibold text-[#1e3a5f] capitalize mb-5">{ev.company_role} Training</p>
+                    <p className="text-xl font-semibold text-[#1e3a5f] capitalize mb-5">{ev.training_name || `${ev.company_role} Training`}</p>
                     <div className="inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-6 py-3 mb-4">
                         <CheckCircle className="w-5 h-5 text-green-600" />
                         <span className="text-xl font-bold text-green-700">{ev.score}/100</span>
@@ -123,12 +124,38 @@ export function MyAnalyticsPage() {
                     .select('*', { count: 'exact', head: true })
                     .eq('user_id', user.id),
             ]);
-            setEvidence((evData ?? []) as EvidenceRow[]);
+            const rawEvidence = (evData ?? []) as EvidenceRow[];
+
+            // Fetch training names for all training_ids in evidence
+            const trainingIds = [...new Set(rawEvidence.map(e => e.training_id).filter(Boolean))];
+            let nameMap: Record<number, string> = {};
+            if (trainingIds.length > 0) {
+                const { data: trainingData } = await supabase
+                    .from('trainings')
+                    .select('id, name, company_role')
+                    .in('id', trainingIds);
+                if (trainingData) {
+                    nameMap = Object.fromEntries(
+                        trainingData.map(t => [t.id, t.name || ''])
+                    );
+                }
+            }
+
+            // Merge names into evidence rows
+            const evidenceWithNames = rawEvidence.map(e => ({
+                ...e,
+                training_name: nameMap[e.training_id] || null,
+            }));
+
+            setEvidence(evidenceWithNames);
             setTotalAssigned(count ?? 0);
             setLoading(false);
         };
         void load();
     }, [user]);
+
+    const trainingTitle = (e: EvidenceRow) =>
+        e.training_name || `${e.company_role} Training`;
 
     const completed  = evidence.length;
     const passed     = evidence.filter(e => e.passed).length;
@@ -202,7 +229,7 @@ export function MyAnalyticsPage() {
                                                     <Award className="w-5 h-5 text-amber-500" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-semibold text-gray-900 capitalize">{e.company_role} Training</p>
+                                                    <p className="text-sm font-semibold text-gray-900 capitalize">{trainingTitle(e)}</p>
                                                     <p className="text-xs text-gray-500">{formatDate(e.completed_at)} · {e.score}/100</p>
                                                 </div>
                                             </div>
