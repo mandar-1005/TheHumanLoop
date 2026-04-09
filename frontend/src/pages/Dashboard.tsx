@@ -53,7 +53,7 @@ const navItems = [
         active: false,
     },
     { icon: Users, label: "Roles & Assessments", href: "/roles", active: false },
-    { icon: BarChart3, label: "Analytics", href: "/analytics", active: false },
+    { icon: BarChart3, label: "Analytics", href: "/progress", active: false },
     { icon: Settings, label: "Settings", href: "/settings", active: false },
 ];
 
@@ -490,7 +490,8 @@ export function Dashboard() {
                                         item.href === "/training-modules" ||
                                         item.href === "/ssp-documents" ||
                                         item.href === "/roles" ||
-                                        item.href === "/settings"
+                                        item.href === "/settings" ||
+                                        item.href === "/progress"
                                     ) {
                                         navigate(item.href);
                                         return;
@@ -862,8 +863,8 @@ export function Dashboard() {
                                             </p>
                                             <p className="text-xs text-gray-500 mt-0.5">
                                                 Created {new Date(item.created_at).toLocaleDateString("en-US", {
-                                                    month: "short", day: "numeric", year: "numeric",
-                                                })}
+                                                month: "short", day: "numeric", year: "numeric",
+                                            })}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-2">

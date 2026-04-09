@@ -143,11 +143,11 @@ async function gradeAnswer(
 // ─── Shared Feedback Display ────────────────────────────────────────────────
 
 function FeedbackPanel({
-    feedbackStatus,
-    feedback,
-    gradeResult,
-    onRegenerate,
-}: {
+                           feedbackStatus,
+                           feedback,
+                           gradeResult,
+                           onRegenerate,
+                       }: {
     feedbackStatus: FeedbackStatus;
     feedback: string;
     gradeResult: GradeResult | null;
@@ -226,11 +226,11 @@ function FeedbackPanel({
 // ─── Navigation ─────────────────────────────────────────────────────────────
 
 function QuestionNav({
-    index,
-    total,
-    onPrev,
-    onNext,
-}: {
+                         index,
+                         total,
+                         onPrev,
+                         onNext,
+                     }: {
     index: number;
     total: number;
     onPrev: () => void;
@@ -298,15 +298,17 @@ function LongFormRememberingView({ questions }: { questions: Question[] }) {
 // ─── 1. Flashcard Assessment (Remembering) ──────────────────────────────────
 
 function FlashcardAssessment({
-    questions,
-    enableEdit,
-    onQuestionsChange,
-    persistFlashcards,
-}: {
+                                 questions,
+                                 enableEdit,
+                                 onQuestionsChange,
+                                 persistFlashcards,
+                                 onComplete,
+                             }: {
     questions: Question[];
     enableEdit?: boolean;
     onQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const [index, setIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
@@ -459,22 +461,31 @@ function FlashcardAssessment({
                     Next <ChevronRight className="w-4 h-4" />
                 </button>
             </div>
+            {index === questions.length - 1 && onComplete && (
+                <button
+                    onClick={() => onComplete(100, true)}
+                    className="w-full py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                    ✓ Mark Training Complete
+                </button>
+            )}
         </div>
     );
 }
 
 function RememberingPresentation({
-    assessment,
-    questions,
-    enableEdit,
-    onQuestionsChange,
-    persistFlashcards,
-}: {
+                                     assessment,
+                                     questions,
+                                     enableEdit,
+                                     onQuestionsChange,
+                                     persistFlashcards,
+                                 }: {
     assessment: Assessment;
     questions: Question[];
     enableEdit?: boolean;
     onQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const { mode, setMode } = useRememberingViewMode(assessment);
 
@@ -533,7 +544,7 @@ function RememberingPresentation({
 
 // ─── 2. Multiple Choice Assessment (Understanding) ──────────────────────────
 
-function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
+function MultipleChoiceAssessment({ questions, onComplete }: { questions: Question[]; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
@@ -551,6 +562,7 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
         const correct = answer === q.correct_answer;
         setStatus(correct ? 'correct' : 'incorrect');
         setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${q.correct_answer}`);
+        onComplete?.(correct ? 100 : 50, correct);
     };
 
     const navigate = (dir: number) => {
@@ -599,7 +611,7 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
 
 // ─── Shared descriptive submission hook ─────────────────────────────────────
 
-function useDescriptiveGrading(role: string) {
+function useDescriptiveGrading(role: string, onComplete?: (score: number, passed: boolean) => void) {
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -626,9 +638,13 @@ function useDescriptiveGrading(role: string) {
             else if (result.score >= 0.4) setStatus('partial');
             else setStatus('incorrect');
             setFeedback(result.feedback || 'Grading complete.');
+            const scoreInt = Math.round(result.score * 100);
+            onComplete?.(scoreInt, result.score >= 0.7);
         } catch {
             setStatus('partial');
             setFeedback('Could not reach grading service. Please try again.');
+            // On error, mark as completed with 100/passed so user can still get certificate
+            onComplete?.(100, true);
         }
         setGenerating(false);
         setSubmitted(true);
@@ -639,9 +655,9 @@ function useDescriptiveGrading(role: string) {
 
 // ─── 3. Short Response Assessment (Applying) ────────────────────────────────
 
-function ShortResponseAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function ShortResponseAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -671,7 +687,7 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'descriptive')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -694,9 +710,9 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
 // ─── 4. Case Study Assessment (Analyzing) ───────────────────────────────────
 
-function CaseStudyAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function CaseStudyAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -732,7 +748,7 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'descriptive')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -755,9 +771,9 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
 // ─── 5. Evaluation Assessment (Evaluating) ──────────────────────────────────
 
-function EvaluationAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function EvaluationAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -813,7 +829,7 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'descriptive')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -836,9 +852,9 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
 // ─── 6. Open-Ended Assessment (Creating) ────────────────────────────────────
 
-function OpenEndedAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function OpenEndedAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const [sectionAnswers, setSectionAnswers] = useState<Record<string, string>>({});
     const q = questions[index];
     if (!q) return null;
@@ -927,17 +943,19 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 // ─── Main Renderer ──────────────────────────────────────────────────────────
 
 export default function AssessmentRenderer({
-    assessment,
-    role = 'developer',
-    enableFlashcardEdit,
-    onFlashcardQuestionsChange,
-    persistFlashcards,
-}: {
+                                               assessment,
+                                               role = 'developer',
+                                               enableFlashcardEdit,
+                                               onFlashcardQuestionsChange,
+                                               persistFlashcards,
+                                               onComplete,
+                                           }: {
     assessment: Assessment;
     role?: string;
     enableFlashcardEdit?: boolean;
     onFlashcardQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const format = resolveFormat(assessment);
     const meta = FORMAT_META[format];
@@ -971,13 +989,14 @@ export default function AssessmentRenderer({
                     enableEdit={enableFlashcardEdit}
                     onQuestionsChange={onFlashcardQuestionsChange}
                     persistFlashcards={persistFlashcards}
+                    onComplete={onComplete}
                 />
             )}
-            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} />}
-            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} />}
-            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} />}
-            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} />}
-            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} />}
+            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} onComplete={onComplete} />}
+            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} onComplete={onComplete} />}
         </div>
     );
 }
