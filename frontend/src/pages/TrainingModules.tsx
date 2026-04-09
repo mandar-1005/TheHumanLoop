@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut,  Sparkles } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, Sparkles, Trash2, Pencil, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
@@ -17,6 +17,7 @@ type TrainingContent = {
 
 type TrainingRow = {
     id: string | number;
+    name?: string | null;
     company_role: string | null;
     training_json: unknown;
     created_at: string | null;
@@ -25,6 +26,7 @@ type TrainingRow = {
 
 type TrainingModule = {
     id: string;
+    name: string;
     role: string;
     status: TrainingStatus;
     createdAt: string;
@@ -81,6 +83,7 @@ function mapTraining(row: TrainingRow): TrainingModule {
 
     return {
         id: String(row.id),
+        name: row.name || '',
         role: row.company_role || 'Other',
         status: STATUS_MAP[row.status ?? 'published'] ?? 'Published',
         createdAt: formattedDate,
@@ -341,6 +344,9 @@ export function TrainingModulesPage() {
     const [workingContents, setWorkingContents] = useState<TrainingContent[]>([]);
     const [flashcardPersist, setFlashcardPersist] = useState(false);
     const [flashcardSaveMsg, setFlashcardSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null); // training id pending delete
+    const [editingName, setEditingName] = useState<string | null>(null);     // training id being renamed
+    const [nameInput, setNameInput] = useState('');
 
     const total = useMemo(() => rows.length, [rows]);
 
@@ -360,7 +366,7 @@ export function TrainingModulesPage() {
 
             const { data, error } = await supabase
                 .from('trainings')
-                .select('id, company_role, training_json, created_at, status')
+                .select('id, name, company_role, training_json, created_at, status')
                 .order('created_at', { ascending: false });
 
             if (!mounted) return;
@@ -378,6 +384,27 @@ export function TrainingModulesPage() {
         void load();
         return () => { mounted = false; };
     }, []);
+
+    const handleDelete = async (id: string) => {
+        const { error } = await supabase.from('trainings').delete().eq('id', Number(id));
+        if (error) { console.error('Delete failed:', error); return; }
+        setRows(prev => prev.filter(r => r.id !== id));
+        if (selected?.id === id) setSelected(null);
+        setDeleteConfirm(null);
+    };
+
+    const handleSaveName = async (id: string) => {
+        const trimmed = nameInput.trim();
+        if (!trimmed) { setEditingName(null); return; }
+        const { error } = await supabase
+            .from('trainings')
+            .update({ name: trimmed })
+            .eq('id', Number(id));
+        if (error) { console.error('Name save failed:', error); return; }
+        setRows(prev => prev.map(r => r.id === id ? { ...r, name: trimmed } : r));
+        if (selected?.id === id) setSelected(prev => prev ? { ...prev, name: trimmed } : prev);
+        setEditingName(null);
+    };
 
     const handleFlashcardQuestionsChange = async (contentIndex: number, questions: Question[]) => {
         if (!selected) return;
@@ -428,9 +455,9 @@ export function TrainingModulesPage() {
 
                         <div className="mb-6">
                             <h1 className="text-2xl font-semibold text-gray-900 capitalize">
-                                {selected.role} Training
+                                {selected.name || `${selected.role} Training`}
                             </h1>
-                            <p className="text-sm text-gray-500 mt-1">Created {selected.createdAt}</p>
+                            <p className="text-sm text-gray-500 mt-1 capitalize">{selected.role} · Created {selected.createdAt}</p>
                         </div>
 
                         {flashcardSaveMsg && (
@@ -470,55 +497,109 @@ export function TrainingModulesPage() {
                     </p>
 
                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assessment Type</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Modules</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
-                            </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                            {loading && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[900px]">
+                                <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Name</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assessment Type</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Modules</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
+                                    <th className="px-6 py-3" />
                                 </tr>
-                            )}
-                            {!loading && error && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
-                                </tr>
-                            )}
-                            {!loading && !error && rows.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
-                                </tr>
-                            )}
-                            {!loading && !error && rows.map((row) => (
-                                <tr
-                                    key={row.id}
-                                    onClick={() => {
-                                        setSelected(row);
-                                        setWorkingContents(cloneTrainingContents(row.contents));
-                                        setFlashcardSaveMsg(null);
-                                    }}
-                                    className="hover:bg-blue-50 cursor-pointer transition-colors"
-                                >
-                                    <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{row.role}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">
-                                        {row.contents[0]?.assessment?.type ?? '—'}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">{row.contents.length}</td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge status={row.status} />
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                {loading && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                    </tr>
+                                )}
+                                {!loading && error && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
+                                    </tr>
+                                )}
+                                {!loading && !error && rows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
+                                    </tr>
+                                )}
+                                {!loading && !error && rows.map((row) => (
+                                    <tr
+                                        key={row.id}
+                                        onClick={() => {
+                                            if (editingName === row.id) return;
+                                            setSelected(row);
+                                            setWorkingContents(cloneTrainingContents(row.contents));
+                                            setFlashcardSaveMsg(null);
+                                        }}
+                                        className="hover:bg-blue-50 cursor-pointer transition-colors"
+                                    >
+                                        {/* Name cell with inline edit */}
+                                        <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                                            {editingName === row.id ? (
+                                                <div className="flex items-center gap-1">
+                                                    <input
+                                                        autoFocus
+                                                        value={nameInput}
+                                                        onChange={e => setNameInput(e.target.value)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') void handleSaveName(row.id);
+                                                            if (e.key === 'Escape') setEditingName(null);
+                                                        }}
+                                                        className="w-36 px-2 py-1 border border-blue-400 rounded text-sm focus:outline-none"
+                                                    />
+                                                    <button onClick={() => void handleSaveName(row.id)} className="text-green-600 hover:text-green-700"><Check className="w-4 h-4" /></button>
+                                                    <button onClick={() => setEditingName(null)} className="text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 group">
+                                                <span className="text-sm text-gray-800">
+                                                    {row.name || <span className="text-gray-400 italic">Untitled</span>}
+                                                </span>
+                                                    <button
+                                                        onClick={() => { setEditingName(row.id); setNameInput(row.name || ''); }}
+                                                        className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-gray-600 transition-opacity"
+                                                    >
+                                                        <Pencil className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{row.role}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-700">
+                                            {row.contents[0]?.assessment?.type ?? '—'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-700">{row.contents.length}</td>
+                                        <td className="px-6 py-4">
+                                            <StatusBadge status={row.status} />
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
+                                        {/* Actions cell */}
+                                        <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                                            {deleteConfirm === row.id ? (
+                                                <div className="flex items-center gap-1">
+                                                    <span className="text-xs text-red-600 font-medium">Delete?</span>
+                                                    <button onClick={() => void handleDelete(row.id)} className="text-xs px-2 py-0.5 bg-red-600 text-white rounded hover:bg-red-700">Yes</button>
+                                                    <button onClick={() => setDeleteConfirm(null)} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">No</button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setDeleteConfirm(row.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Delete training"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </main>
             </div>

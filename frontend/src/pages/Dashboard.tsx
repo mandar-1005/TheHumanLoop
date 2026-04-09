@@ -191,6 +191,7 @@ export function Dashboard() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
+    const [newName, setNewName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [creationStep, setCreationStep] = useState(0);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -357,8 +358,16 @@ export function Dashboard() {
 
             const createdId = data?.result?.training_row?.id ?? null;
             setLastCreatedId(createdId);
+            // Save name if provided
+            if (createdId && newName.trim()) {
+                await supabase
+                    .from('trainings')
+                    .update({ name: newName.trim() })
+                    .eq('id', createdId);
+            }
             setShowCreateModal(false);
             setNewRole("");
+            setNewName("");
             setSelectedSSPId("");
             setCreationStep(0);
             setShowSuccessModal(true);
@@ -944,6 +953,18 @@ export function Dashboard() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">
                             Create Training Module
                         </h3>
+
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Training Name <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            placeholder="e.g. Q2 Developer Security Training"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]"
+                            disabled={isCreating}
+                        />
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Role

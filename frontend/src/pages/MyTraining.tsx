@@ -18,12 +18,14 @@ interface AssignedTraining {
     due_date: string | null;
     training: {
         id: number;
+        name?: string | null;
         company_role: string;
         training_json: string;
         created_at: string;
         status?: string;
     } | {
         id: number;
+        name?: string | null;
         company_role: string;
         training_json: string;
         created_at: string;
@@ -45,6 +47,7 @@ type TrainingContent = {
 
 type TrainingModule = {
     id: string;
+    name: string;
     role: string;
     contents: TrainingContent[];
     createdAt: string;
@@ -257,7 +260,7 @@ export function MyTrainingPage() {
                     assigned_at,
                     due_date,
                     training:training_id (
-                        id, company_role, training_json, created_at, status
+                        id, name, company_role, training_json, created_at, status
                     )
                 `)
                 .eq('user_id', user.id)
@@ -282,6 +285,14 @@ export function MyTrainingPage() {
         void load();
     }, [user]);
 
+    // Returns due date: use stored value if set, otherwise assigned_at + 7 days
+    const dueDateFor = (a: AssignedTraining): string => {
+        if (a.due_date) return formatDate(a.due_date);
+        const d = new Date(a.assigned_at);
+        d.setDate(d.getDate() + 7);
+        return formatDate(d.toISOString());
+    };
+
     const getScore = (trainingId: number) =>
         scores.find(s => s.training_id === trainingId);
 
@@ -301,6 +312,7 @@ export function MyTrainingPage() {
         const contents = parseTrainingJson(t.training_json);
         setActiveTraining({
             id: String(t.id),
+            name: t.name || '',
             role: t.company_role,
             contents,
             createdAt: formatDate(t.created_at),
@@ -394,7 +406,7 @@ export function MyTrainingPage() {
                                 </button>
                                 <span className="text-gray-300">/</span>
                                 <h2 className="text-lg font-semibold text-gray-900 capitalize">
-                                    {activeTraining.role} Training
+                                    {activeTraining.name || `${activeTraining.role} Training`}
                                 </h2>
                             </div>
                             <div className="flex items-center gap-3">
@@ -477,67 +489,76 @@ export function MyTrainingPage() {
                                     <p className="text-xs text-gray-400 mt-1">Your admin will assign trainings to you</p>
                                 </div>
                             ) : (
-                                <table className="w-full">
-                                    <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
-                                        <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                        <th className="px-6 py-3" />
-                                    </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                    {assignments.map((a) => {
-                                        const t = getTrainingFromAssignment(a);
-                                        const score = t ? getScore(t.id) : undefined;
-                                        return (
-                                            <tr key={a.id} className="hover:bg-gray-50">
-                                                <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">
-                                                    {t?.company_role ?? '—'} Training
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">
-                                                    {formatDate(a.assigned_at)}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">
-                                                    {a.due_date ? formatDate(a.due_date) : '—'}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-gray-600">
-                                                    {score ? `${score.score}/100` : '—'}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    {score ? (
-                                                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                            score.passed
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-red-100 text-red-700'
-                                                        }`}>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[860px]">
+                                        <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                            <th className="px-6 py-3" />
+                                        </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                        {assignments.map((a) => {
+                                            const t = getTrainingFromAssignment(a);
+                                            const score = t ? getScore(t.id) : undefined;
+                                            return (
+                                                <tr key={a.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-sm font-medium text-gray-900">
+                                                            {t?.name || <span className="capitalize">{t?.company_role ?? '—'} Training</span>}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 capitalize mt-0.5">{t?.company_role ?? ''}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {t?.created_at ? formatDate(t.created_at) : '—'}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {formatDate(a.assigned_at)}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {dueDateFor(a)}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {score ? `${score.score}/100` : '—'}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {score ? (
+                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                                score.passed
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-red-100 text-red-700'
+                                                            }`}>
                                                             {score.passed ? 'Passed' : 'Failed'}
                                                         </span>
-                                                    ) : (
-                                                        <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                        ) : (
+                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
                                                             Pending
                                                         </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
-                                                            {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
-                                                        </button>
-                                                        {score && (
-                                                            <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
-                                                                <Award className="w-3 h-3" /> Certificate
-                                                            </button>
                                                         )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                    </tbody>
-                                </table>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
+                                                                {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
+                                                            </button>
+                                                            {score && (
+                                                                <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                    <Award className="w-3 h-3" /> Certificate
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
                         </div>
                     </main>
