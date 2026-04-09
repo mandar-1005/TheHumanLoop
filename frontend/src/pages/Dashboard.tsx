@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     LayoutDashboard,
     BookOpen,
@@ -18,6 +18,10 @@ import {
     Clock,
     Download,
     LogOut,
+    Upload,
+    Trash2,
+    Image as ImageIcon,
+    X,
 } from "lucide-react";
 import {
     BarChart,
@@ -221,6 +225,11 @@ export function Dashboard() {
     const [showRejectModal, setShowRejectModal] = useState<number | null>(null);
     const [rejectReason, setRejectReason] = useState("");
 
+    const [showMediaModal, setShowMediaModal] = useState<number | null>(null);
+    const [mediaImages, setMediaImages] = useState<{ id: string; url: string; caption: string }[]>([]);
+    const [mediaUploading, setMediaUploading] = useState(false);
+    const mediaFileRef = useRef<HTMLInputElement>(null);
+
     const loadReviewQueue = async () => {
         setReviewLoading(true);
         const { data } = await supabase
@@ -412,6 +421,73 @@ export function Dashboard() {
             setRejectReason("");
         } catch {
             toast.error("Failed to reject training.");
+        }
+    };
+
+    const openMediaModal = async (trainingId: number) => {
+        setShowMediaModal(trainingId);
+        setMediaImages([]);
+        try {
+            const { data } = await supabase
+                .from("trainings")
+                .select("training_json")
+                .eq("id", trainingId)
+                .single();
+            if (data?.training_json) {
+                const parsed = typeof data.training_json === "string"
+                    ? JSON.parse(data.training_json.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim())
+                    : data.training_json;
+                const content = Array.isArray(parsed) ? parsed[0] : parsed;
+                const imgs = content?.media?.images || [];
+                setMediaImages(imgs.map((img: { id: string; url: string; caption?: string }) => ({
+                    id: img.id,
+                    url: img.url,
+                    caption: img.caption || "",
+                })));
+            }
+        } catch { /* ignore */ }
+    };
+
+    const uploadMedia = async (file: File) => {
+        if (!showMediaModal) return;
+        setMediaUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("caption", file.name.replace(/\.[^.]+$/, ""));
+            formData.append("section_ref", "General");
+
+            const res = await fetch(
+                `http://127.0.0.1:8000/api/trainings/${showMediaModal}/media`,
+                { method: "POST", body: formData },
+            );
+            const data = await res.json();
+            if (res.ok && data.url) {
+                setMediaImages(prev => [...prev, { id: data.media_id, url: data.url, caption: file.name }]);
+                toast.success("Image uploaded.");
+            } else {
+                toast.error(data?.detail || "Upload failed.");
+            }
+        } catch {
+            toast.error("Upload failed.");
+        } finally {
+            setMediaUploading(false);
+        }
+    };
+
+    const deleteMedia = async (mediaId: string) => {
+        if (!showMediaModal) return;
+        try {
+            const res = await fetch(
+                `http://127.0.0.1:8000/api/trainings/${showMediaModal}/media/${mediaId}`,
+                { method: "DELETE" },
+            );
+            if (res.ok) {
+                setMediaImages(prev => prev.filter(m => m.id !== mediaId));
+                toast.success("Image removed.");
+            }
+        } catch {
+            toast.error("Failed to remove image.");
         }
     };
 
@@ -868,6 +944,12 @@ export function Dashboard() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
+                                                onClick={() => openMediaModal(item.id)}
+                                                className="px-3 py-1.5 text-xs font-medium text-purple-600 border border-purple-300 rounded-lg hover:bg-purple-50"
+                                            >
+                                                Media
+                                            </button>
+                                            <button
                                                 onClick={() => navigate("/training-modules")}
                                                 className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
                                             >
@@ -1119,6 +1201,82 @@ export function Dashboard() {
                                 className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
                             >
                                 Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Media Management Modal ── */}
+            {showMediaModal !== null && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg bg-white rounded-xl border border-gray-200 p-6 shadow-xl max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-gray-900">Manage Media</h3>
+                            <button
+                                onClick={() => setShowMediaModal(null)}
+                                className="p-1 hover:bg-gray-100 rounded-lg"
+                            >
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-4">
+                            Upload custom images or remove AI-generated ones for training #{showMediaModal}.
+                        </p>
+
+                        <div className="flex-1 overflow-y-auto mb-4">
+                            {mediaImages.length === 0 ? (
+                                <div className="text-center py-8">
+                                    <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-500">No images yet</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {mediaImages.map((img) => (
+                                        <div key={img.id} className="relative group rounded-lg border border-gray-200 overflow-hidden">
+                                            <img
+                                                src={img.url}
+                                                alt={img.caption}
+                                                className="w-full h-32 object-cover"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='128' fill='%23f3f4f6'%3E%3Crect width='200' height='128'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239ca3af' font-size='12'%3EImage%3C/text%3E%3C/svg%3E";
+                                                }}
+                                            />
+                                            <button
+                                                onClick={() => deleteMedia(img.id)}
+                                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                title="Remove image"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                            </button>
+                                            {img.caption && (
+                                                <p className="text-xs text-gray-500 p-1.5 truncate">{img.caption}</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="border-t border-gray-200 pt-4">
+                            <input
+                                ref={mediaFileRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) uploadMedia(file);
+                                    e.target.value = "";
+                                }}
+                            />
+                            <button
+                                onClick={() => mediaFileRef.current?.click()}
+                                disabled={mediaUploading}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-[#1e3a5f] hover:text-[#1e3a5f] transition-colors disabled:opacity-50"
+                            >
+                                <Upload className="w-4 h-4" />
+                                {mediaUploading ? "Uploading..." : "Upload Image"}
                             </button>
                         </div>
                     </div>

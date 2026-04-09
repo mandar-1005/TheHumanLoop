@@ -9,6 +9,10 @@ import {
 } from 'lucide-react';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment } from '../components/AssessmentRenderer';
+import {
+    MermaidDiagram, StudyGuideNarrator, MediaImageCard, VideoRecommendation,
+} from '../components/MultimediaComponents';
+import type { TrainingMedia } from '../components/MultimediaComponents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,7 @@ interface TrainingScore {
 type TrainingContent = {
     study_guide: string;
     assessment: Assessment;
+    media?: TrainingMedia;
 };
 
 type TrainingModule = {
@@ -71,13 +76,78 @@ function getTrainingFromAssignment(a: AssignedTraining) {
 
 // ─── Markdown renderer ──────────────────────────────────────────────────────
 
-function StudyGuideRenderer({ markdown }: { markdown: string }) {
+function StudyGuideRenderer({ markdown, media }: { markdown: string; media?: TrainingMedia }) {
     const lines = markdown.split('\n');
+
+    const diagramsBySection = new Map<string, NonNullable<TrainingMedia['diagrams']>>();
+    const imagesBySection = new Map<string, NonNullable<TrainingMedia['images']>>();
+    const videosBySection = new Map<string, NonNullable<TrainingMedia['videos']>>();
+
+    if (media?.diagrams) {
+        for (const d of media.diagrams) {
+            const key = d.section_ref.toLowerCase();
+            if (!diagramsBySection.has(key)) diagramsBySection.set(key, []);
+            diagramsBySection.get(key)!.push(d);
+        }
+    }
+    if (media?.images) {
+        for (const img of media.images) {
+            const key = img.section_ref.toLowerCase();
+            if (!imagesBySection.has(key)) imagesBySection.set(key, []);
+            imagesBySection.get(key)!.push(img);
+        }
+    }
+    if (media?.videos) {
+        for (const v of media.videos) {
+            const key = v.section_ref.toLowerCase();
+            if (!videosBySection.has(key)) videosBySection.set(key, []);
+            videosBySection.get(key)!.push(v);
+        }
+    }
+
+    const renderedSections = new Set<string>();
+
+    const renderMediaForSection = (heading: string) => {
+        const key = heading.toLowerCase();
+        if (renderedSections.has(key)) return null;
+        renderedSections.add(key);
+
+        const diagrams = diagramsBySection.get(key) || [];
+        const images = imagesBySection.get(key) || [];
+        const videos = videosBySection.get(key) || [];
+
+        if (!diagrams.length && !images.length && !videos.length) return null;
+
+        return (
+            <div key={`media-${key}`}>
+                {images.map(img => <MediaImageCard key={img.id} image={img} />)}
+                {diagrams.map(d => <MermaidDiagram key={d.id} diagram={d} />)}
+                {videos.map(v => <VideoRecommendation key={v.id} video={v} />)}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-2 text-sm text-gray-800 leading-relaxed">
             {lines.map((line, i) => {
-                if (line.startsWith('## ')) return <h2 key={i} className="text-lg font-bold text-gray-900 mt-4 mb-1">{line.replace('## ', '')}</h2>;
-                if (line.startsWith('### ')) return <h3 key={i} className="text-base font-semibold text-gray-900 mt-3 mb-1">{line.replace('### ', '')}</h3>;
+                if (line.startsWith('## ')) {
+                    const heading = line.replace('## ', '');
+                    return (
+                        <div key={i}>
+                            <h2 className="text-lg font-bold text-gray-900 mt-4 mb-1">{heading}</h2>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
+                }
+                if (line.startsWith('### ')) {
+                    const heading = line.replace('### ', '');
+                    return (
+                        <div key={i}>
+                            <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1">{heading}</h3>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
+                }
                 if (line.startsWith('#### ')) return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace('#### ', '')}</h4>;
                 if (line.match(/^\d+\.\s+\*\*/)) {
                     const text = line.replace(/^\d+\.\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
@@ -156,9 +226,12 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
             </div>
 
             {studyMode === 'guide' && (
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <StudyGuideRenderer markdown={content.study_guide} />
-                </div>
+                <>
+                    <StudyGuideNarrator text={content.study_guide} />
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                        <StudyGuideRenderer markdown={content.study_guide} media={content.media} />
+                    </div>
+                </>
             )}
 
             {studyMode === 'assessment' && content.assessment && (

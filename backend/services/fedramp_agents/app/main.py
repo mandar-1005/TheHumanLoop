@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.endpoints.feedback import router as feedback_router
 from app.endpoints.grading import router as grading_router
+from app.endpoints.media import router as media_router
 from app.endpoints.review import router as review_router
 from app.endpoints.system import router as system_router
 from app.endpoints.trainings import router as trainings_router
@@ -11,6 +12,7 @@ app.include_router(trainings_router)
 app.include_router(grading_router)
 app.include_router(feedback_router)
 app.include_router(review_router)
+app.include_router(media_router)
 app.include_router(system_router)
 
 app.add_middleware(
