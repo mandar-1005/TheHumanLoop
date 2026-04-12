@@ -274,8 +274,8 @@ function Sidebar() {
         { icon: BookOpen, label: 'Training Modules', href: '/training-modules' },
         { icon: FileText, label: 'SSP Documents', href: '/ssp-documents' },
         { icon: Users, label: 'Roles & Assessments', href: '/roles' },
-        { icon: BarChart3, label: 'Analytics', href: null },
-        { icon: Settings, label: 'Settings', href: null },
+        { icon: BarChart3, label: 'Analytics', href: '/progress' },
+        { icon: Settings, label: 'Settings', href: '/settings' },
     ];
 
     const current = '/training-modules';
