@@ -107,18 +107,24 @@ async function gradeAnswer(
     rubric: string,
     correctAnswer?: string,
 ): Promise<GradeResult> {
+    // Matches GradeAssessmentRequest schema exactly
     const body = {
         questions: [{
             question_id: questionId,
-            prompt,
-            role,
+            prompt: prompt || 'Answer the following question.',
+            role: role || 'developer',
             question_type: questionType,
-            rubric,
-            options: [],
+            bloom_level: null,
+            rubric: rubric || '',
+            options: [] as string[],
             correct_answer: correctAnswer ?? null,
+            answer_key: null,
         }],
         selected_answers: [{ question_id: questionId, answer }],
+        temperature: 0.2,
     };
+
+    console.log('[gradeAnswer] sending:', JSON.stringify(body, null, 2));
 
     const res = await fetch(GRADING_API, {
         method: 'POST',
@@ -126,12 +132,22 @@ async function gradeAnswer(
         body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error('Grading request failed');
+    if (!res.ok) {
+        const errText = await res.text();
+        console.error('[gradeAnswer] error ' + res.status + ':', errText);
+        throw new Error('Grading failed ' + res.status + ': ' + errText);
+    }
 
     const data = await res.json();
+    console.log('[gradeAnswer] response:', data);
     const detail = data.details?.[0] ?? {};
+
+    // Normalize score: API may return 0-1 float or 0-100 integer
+    const rawScore: number = detail.score ?? 0;
+    const normalizedScore = rawScore <= 1 ? rawScore : rawScore / 100;
+
     return {
-        score: detail.score ?? 0,
+        score: normalizedScore,   // always 0-1 internally; multiply by 100 when saving
         feedback: detail.feedback ?? '',
         is_correct: detail.is_correct ?? false,
         strengths: detail.strengths,
@@ -143,11 +159,11 @@ async function gradeAnswer(
 // ─── Shared Feedback Display ────────────────────────────────────────────────
 
 function FeedbackPanel({
-    feedbackStatus,
-    feedback,
-    gradeResult,
-    onRegenerate,
-}: {
+                           feedbackStatus,
+                           feedback,
+                           gradeResult,
+                           onRegenerate,
+                       }: {
     feedbackStatus: FeedbackStatus;
     feedback: string;
     gradeResult: GradeResult | null;
@@ -226,11 +242,11 @@ function FeedbackPanel({
 // ─── Navigation ─────────────────────────────────────────────────────────────
 
 function QuestionNav({
-    index,
-    total,
-    onPrev,
-    onNext,
-}: {
+                         index,
+                         total,
+                         onPrev,
+                         onNext,
+                     }: {
     index: number;
     total: number;
     onPrev: () => void;
@@ -298,15 +314,17 @@ function LongFormRememberingView({ questions }: { questions: Question[] }) {
 // ─── 1. Flashcard Assessment (Remembering) ──────────────────────────────────
 
 function FlashcardAssessment({
-    questions,
-    enableEdit,
-    onQuestionsChange,
-    persistFlashcards,
-}: {
+                                 questions,
+                                 enableEdit,
+                                 onQuestionsChange,
+                                 persistFlashcards,
+                                 onComplete,
+                             }: {
     questions: Question[];
     enableEdit?: boolean;
     onQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const [index, setIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
@@ -459,22 +477,32 @@ function FlashcardAssessment({
                     Next <ChevronRight className="w-4 h-4" />
                 </button>
             </div>
+            {index === questions.length - 1 && onComplete && (
+                <button
+                    onClick={() => onComplete(100, true)}
+                    className="w-full mt-3 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                    ✓ Mark Training Complete
+                </button>
+            )}
         </div>
     );
 }
 
 function RememberingPresentation({
-    assessment,
-    questions,
-    enableEdit,
-    onQuestionsChange,
-    persistFlashcards,
-}: {
+                                     assessment,
+                                     questions,
+                                     enableEdit,
+                                     onQuestionsChange,
+                                     persistFlashcards,
+                                     onComplete,
+                                 }: {
     assessment: Assessment;
     questions: Question[];
     enableEdit?: boolean;
     onQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const { mode, setMode } = useRememberingViewMode(assessment);
 
@@ -523,6 +551,7 @@ function RememberingPresentation({
                         enableEdit={enableEdit}
                         onQuestionsChange={onQuestionsChange}
                         persistFlashcards={persistFlashcards}
+                        onComplete={onComplete}
                     />
                 )}
                 {mode === 'long-form' && <LongFormRememberingView questions={questions} />}
@@ -533,7 +562,7 @@ function RememberingPresentation({
 
 // ─── 2. Multiple Choice Assessment (Understanding) ──────────────────────────
 
-function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
+function MultipleChoiceAssessment({ questions, onComplete }: { questions: Question[]; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
@@ -551,6 +580,7 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
         const correct = answer === q.correct_answer;
         setStatus(correct ? 'correct' : 'incorrect');
         setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${q.correct_answer}`);
+        onComplete?.(correct ? 100 : 50, correct);
     };
 
     const navigate = (dir: number) => {
@@ -599,7 +629,7 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
 
 // ─── Shared descriptive submission hook ─────────────────────────────────────
 
-function useDescriptiveGrading(role: string) {
+function useDescriptiveGrading(role: string, onComplete?: (score: number, passed: boolean) => void) {
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -616,9 +646,15 @@ function useDescriptiveGrading(role: string) {
         if (!answer.trim()) return;
         setGenerating(true);
         try {
-            const rubric = q.rubric || q.grading_rubric || '';
+            const rawRubric: unknown = q.rubric || q.grading_rubric || '';
+            // Backend expects rubric as plain string — serialize if it's a JSON object
+            const rubric = typeof rawRubric === 'string'
+                ? rawRubric
+                : JSON.stringify(rawRubric);
+            // Include scenario in prompt so the grader has full context
+            const fullPrompt = [q.scenario, q.prompt || q.question].filter(Boolean).join('\n\n') || 'Answer the following question.';
             const result = await gradeAnswer(
-                `q-${Date.now()}`, q.prompt || q.question || '', answer,
+                `q-${Date.now()}`, fullPrompt, answer,
                 questionType, role, rubric, q.correct_answer,
             );
             setGradeResult(result);
@@ -626,6 +662,7 @@ function useDescriptiveGrading(role: string) {
             else if (result.score >= 0.4) setStatus('partial');
             else setStatus('incorrect');
             setFeedback(result.feedback || 'Grading complete.');
+            onComplete?.(Math.round(result.score * 100), result.score >= 0.7);
         } catch {
             setStatus('partial');
             setFeedback('Could not reach grading service. Please try again.');
@@ -639,9 +676,9 @@ function useDescriptiveGrading(role: string) {
 
 // ─── 3. Short Response Assessment (Applying) ────────────────────────────────
 
-function ShortResponseAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function ShortResponseAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -671,7 +708,7 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'short_response')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -694,9 +731,9 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
 // ─── 4. Case Study Assessment (Analyzing) ───────────────────────────────────
 
-function CaseStudyAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function CaseStudyAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -732,7 +769,7 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'case_study')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -755,9 +792,9 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
 // ─── 5. Evaluation Assessment (Evaluating) ──────────────────────────────────
 
-function EvaluationAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function EvaluationAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -813,7 +850,7 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'evaluation')}
                     disabled={!g.answer.trim()}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -836,9 +873,9 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
 // ─── 6. Open-Ended Assessment (Creating) ────────────────────────────────────
 
-function OpenEndedAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function OpenEndedAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const [sectionAnswers, setSectionAnswers] = useState<Record<string, string>>({});
     const q = questions[index];
     if (!q) return null;
@@ -857,7 +894,7 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 
     const handleSubmit = () => {
         if (sections) g.setAnswer(combinedAnswer);
-        g.submit(q, 'descriptive');
+        void g.submit(q, 'short_response');
     };
 
     const isAnswerEmpty = sections
@@ -927,17 +964,19 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 // ─── Main Renderer ──────────────────────────────────────────────────────────
 
 export default function AssessmentRenderer({
-    assessment,
-    role = 'developer',
-    enableFlashcardEdit,
-    onFlashcardQuestionsChange,
-    persistFlashcards,
-}: {
+                                               assessment,
+                                               role = 'developer',
+                                               enableFlashcardEdit,
+                                               onFlashcardQuestionsChange,
+                                               persistFlashcards,
+                                               onComplete,
+                                           }: {
     assessment: Assessment;
     role?: string;
     enableFlashcardEdit?: boolean;
     onFlashcardQuestionsChange?: (questions: Question[]) => void;
     persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const format = resolveFormat(assessment);
     const meta = FORMAT_META[format];
@@ -971,13 +1010,14 @@ export default function AssessmentRenderer({
                     enableEdit={enableFlashcardEdit}
                     onQuestionsChange={onFlashcardQuestionsChange}
                     persistFlashcards={persistFlashcards}
+                    onComplete={onComplete}
                 />
             )}
-            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} />}
-            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} />}
-            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} />}
-            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} />}
-            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} />}
+            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} onComplete={onComplete} />}
+            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} onComplete={onComplete} />}
         </div>
     );
 }

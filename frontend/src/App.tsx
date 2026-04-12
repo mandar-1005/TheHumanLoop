@@ -11,6 +11,8 @@ import { SSPDocumentsPage } from './pages/SSPDocuments';
 import { MyTrainingPage } from './pages/MyTraining';
 import { RolesAssessmentsPage } from './pages/RoleAssessments';
 import { SettingsPage } from './pages/Settings';
+import { MyAnalyticsPage } from './pages/MyAnalytics';
+import { ProgressDashboardPage } from './pages/ProgressDashboard';
 
 function App() {
     return (
@@ -39,12 +41,22 @@ function App() {
                     <Route path="/roles" element={
                         <ProtectedRoute><RoleGuard requireAdmin><RolesAssessmentsPage /></RoleGuard></ProtectedRoute>
                     } />
+                    <Route path="/progress" element={
+                        <ProtectedRoute><RoleGuard requireAdmin><ProgressDashboardPage /></RoleGuard></ProtectedRoute>
+                    } />
 
                     {/* Employee-only — admins get redirected to /dashboard */}
                     <Route path="/my-training" element={
                         <ProtectedRoute>
                             <RoleGuard requireAdmin={false} redirectAdminTo="/dashboard">
                                 <MyTrainingPage />
+                            </RoleGuard>
+                        </ProtectedRoute>
+                    } />
+                    <Route path="/my-analytics" element={
+                        <ProtectedRoute>
+                            <RoleGuard requireAdmin={false} redirectAdminTo="/progress">
+                                <MyAnalyticsPage />
                             </RoleGuard>
                         </ProtectedRoute>
                     } />

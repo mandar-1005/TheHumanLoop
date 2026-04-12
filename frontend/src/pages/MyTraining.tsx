@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
     Shield, LogOut, BookOpen,
     BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
-    FileText,
+    FileText, Award, X, CheckCircle,
 } from 'lucide-react';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment } from '../components/AssessmentRenderer';
@@ -18,12 +18,14 @@ interface AssignedTraining {
     due_date: string | null;
     training: {
         id: number;
+        name?: string | null;
         company_role: string;
         training_json: string;
         created_at: string;
         status?: string;
     } | {
         id: number;
+        name?: string | null;
         company_role: string;
         training_json: string;
         created_at: string;
@@ -45,6 +47,7 @@ type TrainingContent = {
 
 type TrainingModule = {
     id: string;
+    name: string;
     role: string;
     contents: TrainingContent[];
     createdAt: string;
@@ -109,7 +112,10 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
 
 // ─── Adaptive Study UI ──────────────────────────────────────────────────────
 
-function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
+function AdaptiveStudyUI({ training, onComplete }: {
+    training: TrainingModule;
+    onComplete?: (score: number, passed: boolean) => void;
+}) {
     const [contentIndex, setContentIndex] = useState(0);
     const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
 
@@ -163,7 +169,7 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
 
             {studyMode === 'assessment' && content.assessment && (
                 <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <AssessmentRenderer assessment={content.assessment} role={training.role} />
+                    <AssessmentRenderer assessment={content.assessment} role={training.role} onComplete={onComplete} />
                 </div>
             )}
         </div>
@@ -179,7 +185,7 @@ function Sidebar() {
     const currentPath = '/my-training';
     const navItems = [
         { icon: BookOpen, label: 'My Training', href: '/my-training' },
-        { icon: BarChart3, label: 'My Analytics', href: null },
+        { icon: BarChart3, label: 'My Analytics', href: '/my-analytics' },
         { icon: Settings, label: 'Settings', href: '/settings' },
     ];
 
@@ -239,6 +245,7 @@ export function MyTrainingPage() {
 
     // The training module currently open for study (null = list view)
     const [activeTraining, setActiveTraining] = useState<TrainingModule | null>(null);
+    const [certificate, setCertificate] = useState<{ role: string; score: number; passed: boolean } | null>(null);
 
     useEffect(() => {
         if (!user) return;
@@ -253,7 +260,7 @@ export function MyTrainingPage() {
                     assigned_at,
                     due_date,
                     training:training_id (
-                        id, company_role, training_json, created_at, status
+                        id, name, company_role, training_json, created_at, status
                     )
                 `)
                 .eq('user_id', user.id)
@@ -278,6 +285,14 @@ export function MyTrainingPage() {
         void load();
     }, [user]);
 
+    // Returns due date: use stored value if set, otherwise assigned_at + 7 days
+    const dueDateFor = (a: AssignedTraining): string => {
+        if (a.due_date) return formatDate(a.due_date);
+        const d = new Date(a.assigned_at);
+        d.setDate(d.getDate() + 7);
+        return formatDate(d.toISOString());
+    };
+
     const getScore = (trainingId: number) =>
         scores.find(s => s.training_id === trainingId);
 
@@ -297,10 +312,80 @@ export function MyTrainingPage() {
         const contents = parseTrainingJson(t.training_json);
         setActiveTraining({
             id: String(t.id),
+            name: t.name || '',
             role: t.company_role,
             contents,
             createdAt: formatDate(t.created_at),
         });
+    };
+
+    const handleComplete = async (score: number, passed: boolean) => {
+        if (!user || !activeTraining) return;
+        // Clamp score to valid 0-100 integer range for DB check constraint
+        const safeScore = Math.min(100, Math.max(0, Math.round(score)));
+
+        const orgId = profile?.organization_id;
+        if (!orgId) {
+            console.error('handleComplete: organization_id missing from profile', profile);
+            return;
+        }
+
+        const payload = {
+            user_id: user.id,
+            training_id: Number(activeTraining.id),
+            organization_id: orgId,
+            company_role: activeTraining.role,
+            score: safeScore,
+            // passed is a generated column (score >= 70) — do not insert it
+            assessment_type: activeTraining.contents[0]?.assessment?.type ?? null,
+            completed_at: new Date().toISOString(),
+        };
+
+        console.log('Saving training_evidence:', payload);
+
+        // Check if a record already exists for this user + training
+        const { data: existing } = await supabase
+            .from('training_evidence')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('training_id', payload.training_id)
+            .maybeSingle();
+
+        let saveError;
+        if (existing?.id) {
+            // Update existing row
+            const { error } = await supabase
+                .from('training_evidence')
+                .update({
+                    score: payload.score,
+                    // passed is generated — not updatable
+                    assessment_type: payload.assessment_type,
+                    completed_at: payload.completed_at,
+                })
+                .eq('id', existing.id);
+            saveError = error;
+        } else {
+            // Insert new row
+            const { error } = await supabase
+                .from('training_evidence')
+                .insert(payload);
+            saveError = error;
+        }
+
+        if (saveError) {
+            console.error('training_evidence save failed:', saveError);
+        } else {
+            console.log('training_evidence saved successfully');
+        }
+
+        // Refresh scores
+        const { data } = await supabase
+            .from('training_evidence')
+            .select('training_id, score, passed, completed_at')
+            .eq('user_id', user.id);
+        setScores((data ?? []) as TrainingScore[]);
+        setCertificate({ role: activeTraining.role, score, passed });
+        setActiveTraining(null);
     };
 
     // ── Detail / study view ──
@@ -321,7 +406,7 @@ export function MyTrainingPage() {
                                 </button>
                                 <span className="text-gray-300">/</span>
                                 <h2 className="text-lg font-semibold text-gray-900 capitalize">
-                                    {activeTraining.role} Training
+                                    {activeTraining.name || `${activeTraining.role} Training`}
                                 </h2>
                             </div>
                             <div className="flex items-center gap-3">
@@ -336,7 +421,7 @@ export function MyTrainingPage() {
                         </div>
                     </header>
                     <main className="p-8">
-                        <AdaptiveStudyUI training={activeTraining} />
+                        <AdaptiveStudyUI training={activeTraining} onComplete={handleComplete} />
                     </main>
                 </div>
             </div>
@@ -345,125 +430,178 @@ export function MyTrainingPage() {
 
     // ── List view ──
     return (
-        <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
-            <Sidebar />
-            <div className="ml-64">
-                <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-                    <div className="px-8 py-4 flex items-center justify-between">
-                        <div>
-                            <h2 className="text-2xl font-semibold text-gray-900">My Training</h2>
-                            <p className="text-sm text-gray-600 mt-1">Welcome back, {displayName}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="text-right">
-                                <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                                <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
+        <>
+            <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                <Sidebar />
+                <div className="ml-64">
+                    <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+                        <div className="px-8 py-4 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-2xl font-semibold text-gray-900">My Training</h2>
+                                <p className="text-sm text-gray-600 mt-1">Welcome back, {displayName}</p>
                             </div>
-                            <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
-                                {initials}
+                            <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
+                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
+                                </div>
+                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
+                                    {initials}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </header>
+                    </header>
 
-                <main className="p-8 space-y-6">
-                    {/* Summary cards */}
-                    <div className="grid grid-cols-3 gap-6">
-                        <div className="bg-white rounded-xl border border-gray-200 p-6">
-                            <p className="text-sm text-gray-600">Assigned</p>
-                            <p className="text-3xl font-bold text-gray-900 mt-1">{assignments.length}</p>
-                        </div>
-                        <div className="bg-white rounded-xl border border-gray-200 p-6">
-                            <p className="text-sm text-gray-600">Completed</p>
-                            <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
-                        </div>
-                        <div className="bg-white rounded-xl border border-gray-200 p-6">
-                            <p className="text-sm text-gray-600">Passed</p>
-                            <p className="text-3xl font-bold text-green-600 mt-1">
-                                {scores.filter(s => s.passed).length}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Assigned trainings table */}
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                        <div className="p-6 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Assigned Trainings</h3>
+                    <main className="p-8 space-y-6">
+                        {/* Summary cards */}
+                        <div className="grid grid-cols-3 gap-6">
+                            <div className="bg-white rounded-xl border border-gray-200 p-6">
+                                <p className="text-sm text-gray-600">Assigned</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-1">{assignments.length}</p>
+                            </div>
+                            <div className="bg-white rounded-xl border border-gray-200 p-6">
+                                <p className="text-sm text-gray-600">Completed</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
+                            </div>
+                            <div className="bg-white rounded-xl border border-gray-200 p-6">
+                                <p className="text-sm text-gray-600">Passed</p>
+                                <p className="text-3xl font-bold text-green-600 mt-1">
+                                    {scores.filter(s => s.passed).length}
+                                </p>
+                            </div>
                         </div>
 
-                        {loading ? (
-                            <div className="p-12 text-center">
-                                <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500">Loading your trainings...</p>
+                        {/* Assigned trainings table */}
+                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                            <div className="p-6 border-b border-gray-200">
+                                <h3 className="text-lg font-semibold text-gray-900">Assigned Trainings</h3>
                             </div>
-                        ) : assignments.length === 0 ? (
-                            <div className="p-12 text-center">
-                                <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                                <p className="text-sm text-gray-500 font-medium">No trainings assigned yet</p>
-                                <p className="text-xs text-gray-400 mt-1">Your admin will assign trainings to you</p>
-                            </div>
-                        ) : (
-                            <table className="w-full">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
-                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                    <th className="px-6 py-3" />
-                                </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200">
-                                {assignments.map((a) => {
-                                    const t = getTrainingFromAssignment(a);
-                                    const score = t ? getScore(t.id) : undefined;
-                                    return (
-                                        <tr key={a.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">
-                                                {t?.company_role ?? '—'} Training
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">
-                                                {formatDate(a.assigned_at)}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">
-                                                {a.due_date ? formatDate(a.due_date) : '—'}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600">
-                                                {score ? `${score.score}/100` : '—'}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {score ? (
-                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                        score.passed
-                                                            ? 'bg-green-100 text-green-700'
-                                                            : 'bg-red-100 text-red-700'
-                                                    }`}>
+
+                            {loading ? (
+                                <div className="p-12 text-center">
+                                    <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-500">Loading your trainings...</p>
+                                </div>
+                            ) : assignments.length === 0 ? (
+                                <div className="p-12 text-center">
+                                    <BookOpen className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                                    <p className="text-sm text-gray-500 font-medium">No trainings assigned yet</p>
+                                    <p className="text-xs text-gray-400 mt-1">Your admin will assign trainings to you</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[860px]">
+                                        <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Training</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                            <th className="px-6 py-3" />
+                                        </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                        {assignments.map((a) => {
+                                            const t = getTrainingFromAssignment(a);
+                                            const score = t ? getScore(t.id) : undefined;
+                                            return (
+                                                <tr key={a.id} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4">
+                                                        <p className="text-sm font-medium text-gray-900">
+                                                            {t?.name || <span className="capitalize">{t?.company_role ?? '—'} Training</span>}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 capitalize mt-0.5">{t?.company_role ?? ''}</p>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {t?.created_at ? formatDate(t.created_at) : '—'}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {formatDate(a.assigned_at)}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {dueDateFor(a)}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-600">
+                                                        {score ? `${score.score}/100` : '—'}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {score ? (
+                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
+                                                                score.passed
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-red-100 text-red-700'
+                                                            }`}>
                                                             {score.passed ? 'Passed' : 'Failed'}
                                                         </span>
-                                                ) : (
-                                                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                        ) : (
+                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
                                                             Pending
                                                         </span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <button
-                                                    onClick={() => openTraining(a)}
-                                                    className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline"
-                                                >
-                                                    Start <ChevronRight className="w-3 h-3" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </main>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
+                                                                {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
+                                                            </button>
+                                                            {score && (
+                                                                <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                    <Award className="w-3 h-3" /> Certificate
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </main>
+                </div>
             </div>
-        </div>
+            {/* ── Certificate Modal ── */}
+            {certificate && (
+                <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+                        <div className="bg-gradient-to-br from-[#1e3a5f] to-[#2d5a8f] p-8 text-center relative">
+                            <button onClick={() => setCertificate(null)} className="absolute top-4 right-4 text-white/60 hover:text-white">
+                                <X className="w-5 h-5" />
+                            </button>
+                            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Award className="w-10 h-10 text-amber-300" />
+                            </div>
+                            <p className="text-white/70 text-xs uppercase tracking-widest mb-1">Certificate of Completion</p>
+                            <h2 className="text-2xl font-bold text-white">MARi Secure Training</h2>
+                        </div>
+                        <div className="p-8 text-center border-b border-gray-100">
+                            <p className="text-sm text-gray-500 mb-2">This certifies that</p>
+                            <p className="text-2xl font-bold text-gray-900 mb-2">{displayName}</p>
+                            <p className="text-sm text-gray-500 mb-1">has successfully completed</p>
+                            <p className="text-xl font-semibold text-[#1e3a5f] capitalize mb-5">{certificate.role} Training</p>
+                            <div className="inline-flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-6 py-3 mb-4">
+                                <CheckCircle className="w-5 h-5 text-green-600" />
+                                <span className="text-xl font-bold text-green-700">{certificate.score}/100</span>
+                                <span className="text-sm text-green-600">· {certificate.passed ? 'Passed' : 'Completed'}</span>
+                            </div>
+                            <p className="text-xs text-gray-400">Issued {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                            <p className="text-xs text-gray-400 mt-1">FedRAMP Compliant · MARi Platform</p>
+                        </div>
+                        <div className="p-6 flex gap-3">
+                            <button onClick={() => window.print()} className="flex-1 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors">
+                                Print / Save PDF
+                            </button>
+                            <button onClick={() => setCertificate(null)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 }
