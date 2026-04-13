@@ -279,20 +279,47 @@ function UploadModal({
                         />
                     </div>
 
-                    {/* Status */}
-                    {busy && (
-                        <div className="flex items-center gap-3 mt-4 text-sm text-gray-700">
-                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                            {stage === 'extracting' && 'Extracting text from PDF...'}
-                            {stage === 'uploading' && 'Uploading file to storage...'}
-                            {stage === 'saving' && 'Saving document record...'}
-                        </div>
-                    )}
-
-                    {stage === 'done' && (
-                        <div className="flex items-center gap-2 mt-4 text-sm text-green-700">
-                            <CheckCircle className="w-4 h-4" />
-                            Document uploaded successfully!
+                    {/* Progress */}
+                    {(busy || stage === 'done') && (
+                        <div className="mt-5">
+                            <div className="flex justify-between text-xs mb-2">
+                                {(['extracting', 'uploading', 'saving'] as const).map((s, i) => {
+                                    const labels = ['Extract Text', 'Upload File', 'Save Record'];
+                                    const stageOrder = { extracting: 0, uploading: 1, saving: 2, done: 3, idle: -1, error: -1 };
+                                    const current = stageOrder[stage] ?? -1;
+                                    const isActive = current === i;
+                                    const isDone = current > i || stage === 'done';
+                                    return (
+                                        <span
+                                            key={s}
+                                            className={`font-medium transition-colors duration-300 ${
+                                                isDone ? 'text-green-600' : isActive ? 'text-[#1e3a5f]' : 'text-gray-400'
+                                            }`}
+                                        >
+                                            {isDone ? <span className="inline-flex items-center gap-1"><CheckCircle className="w-3 h-3 inline" /> {labels[i]}</span> : labels[i]}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-700 ease-out ${
+                                        stage === 'done' ? 'bg-green-500' : 'bg-[#1e3a5f]'
+                                    }`}
+                                    style={{
+                                        width: stage === 'extracting' ? '30%'
+                                            : stage === 'uploading' ? '65%'
+                                            : stage === 'saving' ? '90%'
+                                            : stage === 'done' ? '100%' : '0%',
+                                    }}
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2 text-center">
+                                {stage === 'extracting' && 'Extracting text from PDF...'}
+                                {stage === 'uploading' && 'Uploading file to storage...'}
+                                {stage === 'saving' && 'Saving document record...'}
+                                {stage === 'done' && <span className="text-green-600 font-medium">Upload complete!</span>}
+                            </p>
                         </div>
                     )}
 

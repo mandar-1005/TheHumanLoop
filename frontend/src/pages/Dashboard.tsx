@@ -197,6 +197,8 @@ export function Dashboard() {
     const [newRole, setNewRole] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [creationStep, setCreationStep] = useState(0);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [allSSPs, setAllSSPs] = useState<SSPDocRow[]>([]);
     const [selectedSSPId, setSelectedSSPId] = useState<string>("");
@@ -297,20 +299,23 @@ export function Dashboard() {
         }
 
         setIsCreating(true);
+        setElapsedSeconds(0);
+        elapsedRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+
         try {
+            setCreationStep(1);
+
             const selectedDoc = allSSPs.find((s) => s.id === selectedSSPId);
             if (!selectedDoc) throw new Error("Selected SSP not found.");
 
             let sspFileBlob: File;
             if (selectedDoc.extracted_text?.trim()) {
-                // Backend expects text content, so prefer pre-extracted SSP text.
                 sspFileBlob = new File(
                     [selectedDoc.extracted_text],
                     `${selectedDoc.file_name.replace(/\.pdf$/i, "") || "ssp"}-extracted.txt`,
                     { type: "text/plain" },
                 );
             } else {
-                // Fallback for legacy rows that may not have extracted_text saved.
                 const { data: fileData, error: fileError } = await supabase.storage
                     .from("ssp-documents")
                     .download(selectedDoc.file_path);
@@ -342,6 +347,8 @@ export function Dashboard() {
             formData.append("company_id", profile.organization_id);
             formData.append("ssp_file", sspFileBlob);
 
+            setCreationStep(2);
+
             const response = await fetch(
                 "http://127.0.0.1:8000/api/trainings/create",
                 {
@@ -356,13 +363,8 @@ export function Dashboard() {
                 throw new Error(data?.detail || "Failed to create training.");
             }
 
-            // Animate progress steps
-            setCreationStep(1);
-            await new Promise(r => setTimeout(r, 600));
-            setCreationStep(2);
-            await new Promise(r => setTimeout(r, 600));
             setCreationStep(3);
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 600));
 
             const createdId = data?.result?.training_row?.id ?? null;
             setLastCreatedId(createdId);
@@ -376,6 +378,8 @@ export function Dashboard() {
             toast.error(err instanceof Error ? err.message : "Unexpected error.");
         } finally {
             setIsCreating(false);
+            if (elapsedRef.current) clearInterval(elapsedRef.current);
+            elapsedRef.current = null;
         }
     };
 
@@ -1093,23 +1097,63 @@ export function Dashboard() {
                         {/* Progress bar */}
                         {isCreating && (
                             <div className="mb-4">
-                                <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-                                    <span className={creationStep >= 1 ? "text-[#1e3a5f] font-medium" : ""}>Preparing SSP</span>
-                                    <span className={creationStep >= 2 ? "text-[#1e3a5f] font-medium" : ""}>Generating modules</span>
-                                    <span className={creationStep >= 3 ? "text-[#1e3a5f] font-medium" : ""}>Saving</span>
+                                <div className="flex justify-between text-xs mb-2">
+                                    {[
+                                        { step: 1, label: "Prepare SSP" },
+                                        { step: 2, label: "Generate Training" },
+                                        { step: 3, label: "Save" },
+                                    ].map(({ step, label }) => {
+                                        const isDone = creationStep > step;
+                                        const isActive = creationStep === step;
+                                        return (
+                                            <span
+                                                key={step}
+                                                className={`font-medium transition-colors duration-300 ${
+                                                    isDone ? "text-green-600" : isActive ? "text-[#1e3a5f]" : "text-gray-400"
+                                                }`}
+                                            >
+                                                {isDone ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3 inline" /> {label}
+                                                    </span>
+                                                ) : isActive ? (
+                                                    <span className="inline-flex items-center gap-1">
+                                                        <span className="w-3 h-3 inline-block border-2 border-[#1e3a5f] border-t-transparent rounded-full animate-spin" />
+                                                        {label}
+                                                    </span>
+                                                ) : label}
+                                            </span>
+                                        );
+                                    })}
                                 </div>
-                                <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-[#1e3a5f] rounded-full transition-all duration-500 ease-out"
-                                        style={{ width: creationStep === 0 ? "5%" : creationStep === 1 ? "35%" : creationStep === 2 ? "75%" : "100%" }}
-                                    />
+                                <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                                    {creationStep === 2 ? (
+                                        <div
+                                            className="h-full rounded-full bg-[#1e3a5f] animate-pulse"
+                                            style={{
+                                                width: `${Math.min(90, 30 + elapsedSeconds * 0.5)}%`,
+                                                transition: "width 1s ease-out",
+                                            }}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="h-full bg-[#1e3a5f] rounded-full transition-all duration-700 ease-out"
+                                            style={{
+                                                width: creationStep === 1 ? "20%" : creationStep === 3 ? "100%" : "5%",
+                                            }}
+                                        />
+                                    )}
                                 </div>
-                                <p className="text-xs text-gray-400 mt-1.5 text-center">
-                                    {creationStep === 0 && "Starting..."}
-                                    {creationStep === 1 && "Reading SSP document..."}
-                                    {creationStep === 2 && "AI is generating training content..."}
-                                    {creationStep === 3 && "Saving to database..."}
-                                </p>
+                                <div className="flex justify-between items-center mt-2">
+                                    <p className="text-xs text-gray-500">
+                                        {creationStep === 1 && "Reading SSP document..."}
+                                        {creationStep === 2 && "AI is generating training content — this may take 1-2 minutes..."}
+                                        {creationStep === 3 && "Saving to database..."}
+                                    </p>
+                                    <p className="text-xs font-mono text-gray-400">
+                                        {Math.floor(elapsedSeconds / 60)}:{String(elapsedSeconds % 60).padStart(2, "0")}
+                                    </p>
+                                </div>
                             </div>
                         )}
 

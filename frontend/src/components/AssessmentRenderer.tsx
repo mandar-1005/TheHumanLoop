@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     AlertCircle, XCircle, RefreshCw, Sparkles, FileText,
@@ -128,13 +128,20 @@ async function gradeAnswer(
 
     const data = await res.json();
     const detail = data.details?.[0] ?? {};
+    const rawScore = detail.score ?? 0;
+    const normalizedCriteria = (detail.criterion_scores ?? []).map(
+        (c: { criterion: string; weight: number; score: number; rationale: string }) => ({
+            ...c,
+            score: c.score > 1 ? c.score / 100 : c.score,
+        }),
+    );
     return {
-        score: detail.score ?? 0,
+        score: rawScore > 1 ? rawScore / 100 : rawScore,
         feedback: detail.feedback ?? '',
         is_correct: detail.is_correct ?? false,
         strengths: detail.strengths,
         improvements: detail.improvements,
-        criterion_scores: detail.criterion_scores,
+        criterion_scores: normalizedCriteria,
     };
 }
 
@@ -378,6 +385,40 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
     );
 }
 
+// ─── Grading Progress Bar ────────────────────────────────────────────────────
+
+function GradingProgressBar({ active }: { active: boolean }) {
+    const [seconds, setSeconds] = useState(0);
+
+    useEffect(() => {
+        if (!active) { setSeconds(0); return; }
+        setSeconds(0);
+        const id = setInterval(() => setSeconds(s => s + 1), 1000);
+        return () => clearInterval(id);
+    }, [active]);
+
+    if (!active) return null;
+
+    const progress = Math.min(92, 10 + seconds * 4);
+
+    return (
+        <div className="space-y-2">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-gradient-to-r from-[#1e3a5f] to-blue-500 rounded-full animate-pulse"
+                    style={{ width: `${progress}%`, transition: 'width 1s ease-out' }}
+                />
+            </div>
+            <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-500">
+                    {seconds < 3 ? 'Generating answer key...' : seconds < 8 ? 'AI is evaluating your response...' : 'Scoring against rubric criteria...'}
+                </p>
+                <span className="text-xs font-mono text-gray-400">{seconds}s</span>
+            </div>
+        </div>
+    );
+}
+
 // ─── Shared descriptive submission hook ─────────────────────────────────────
 
 function useDescriptiveGrading(role: string) {
@@ -453,7 +494,7 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
             {!g.submitted ? (
                 <button
                     onClick={() => g.submit(q, 'descriptive')}
-                    disabled={!g.answer.trim()}
+                    disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                     {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Response</>}
@@ -464,6 +505,7 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
                 </button>
             )}
 
+            <GradingProgressBar active={g.generating} />
             <FeedbackPanel
                 feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult}
                 onRegenerate={g.submitted ? () => { g.reset(); } : undefined}
@@ -514,7 +556,7 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
             {!g.submitted ? (
                 <button
                     onClick={() => g.submit(q, 'descriptive')}
-                    disabled={!g.answer.trim()}
+                    disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                     {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Response</>}
@@ -525,6 +567,7 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
                 </button>
             )}
 
+            <GradingProgressBar active={g.generating} />
             <FeedbackPanel
                 feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult}
                 onRegenerate={g.submitted ? () => g.reset() : undefined}
@@ -595,7 +638,7 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
             {!g.submitted ? (
                 <button
                     onClick={() => g.submit(q, 'descriptive')}
-                    disabled={!g.answer.trim()}
+                    disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                     {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Evaluating...</> : <><CheckCircle className="w-4 h-4" /> Submit Evaluation</>}
@@ -606,6 +649,7 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
                 </button>
             )}
 
+            <GradingProgressBar active={g.generating} />
             <FeedbackPanel
                 feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult}
                 onRegenerate={g.submitted ? () => g.reset() : undefined}
@@ -685,7 +729,7 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
             {!g.submitted ? (
                 <button
                     onClick={handleSubmit}
-                    disabled={isAnswerEmpty}
+                    disabled={isAnswerEmpty || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                     {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Design</>}
@@ -696,6 +740,7 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
                 </button>
             )}
 
+            <GradingProgressBar active={g.generating} />
             <FeedbackPanel
                 feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult}
                 onRegenerate={g.submitted ? () => { g.reset(); setSectionAnswers({}); } : undefined}

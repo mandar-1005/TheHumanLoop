@@ -18,9 +18,31 @@ def _grade_objective(selected_answer: str, answer_key: str) -> tuple[float, bool
     return (1.0 if is_correct else 0.0, is_correct)
 
 
+def _normalize_criterion_scores(criterion_scores: list) -> list:
+    """Detect if the LLM returned scores on a 0-1 scale and normalize to 0-100."""
+    if not criterion_scores:
+        return criterion_scores
+    scores = []
+    for item in criterion_scores:
+        try:
+            scores.append(float(item.get("score", 0)))
+        except Exception:
+            continue
+    if not scores:
+        return criterion_scores
+    if all(s <= 1.0 for s in scores):
+        for item in criterion_scores:
+            try:
+                item["score"] = float(item["score"]) * 100
+            except Exception:
+                pass
+    return criterion_scores
+
+
 def _weighted_score_from_criteria(criterion_scores) -> float:
     if not criterion_scores:
         return -1.0
+    criterion_scores = _normalize_criterion_scores(criterion_scores)
     weighted = 0.0
     total_weight = 0.0
     for item in criterion_scores:

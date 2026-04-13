@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment } from '../components/AssessmentRenderer';
+import StudyChat from '../components/StudyChat';
 import {
     MermaidDiagram, StudyGuideNarrator, MediaImageCard, VideoRecommendation,
 } from '../components/MultimediaComponents';
@@ -219,7 +220,7 @@ function StatusBadge({ status }: { status: TrainingStatus }) {
 
 function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
     const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
+    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
 
     const content = training.contents[contentIndex];
 
@@ -269,6 +270,15 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                     <FileText className="w-4 h-4" />
                     {content.assessment?.type || 'Assessment'}
                 </button>
+                <button
+                    onClick={() => setStudyMode('chat')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'chat' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
+                    <MessageCircle className="w-4 h-4" />
+                    AI Chat
+                </button>
             </div>
 
             {studyMode === 'guide' && (
@@ -284,6 +294,10 @@ function AdaptiveStudyUI({ training }: { training: TrainingModule }) {
                 <div className="bg-white border border-gray-200 rounded-xl p-6">
                     <AssessmentRenderer assessment={content.assessment} role={training.role} />
                 </div>
+            )}
+
+            {studyMode === 'chat' && (
+                <StudyChat studyGuide={content.study_guide} role={training.role} />
             )}
         </div>
     );
