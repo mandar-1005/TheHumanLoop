@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle, CheckCircle, XCircle, Send, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
@@ -377,10 +377,14 @@ function Sidebar() {
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export function TrainingModulesPage() {
+    const { user } = useAuth();
     const [rows, setRows] = useState<TrainingModule[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<TrainingModule | null>(null);
+    const [reviewLoading, setReviewLoading] = useState(false);
+    const [rejectReason, setRejectReason] = useState('');
+    const [showRejectInput, setShowRejectInput] = useState(false);
 
     const total = useMemo(() => rows.length, [rows]);
 
@@ -412,6 +416,61 @@ export function TrainingModulesPage() {
         return () => { mounted = false; };
     }, []);
 
+    const refreshSelected = (newStatus: TrainingStatus) => {
+        if (!selected) return;
+        const updated = { ...selected, status: newStatus };
+        setSelected(updated);
+        setRows(prev => prev.map(r => r.id === updated.id ? updated : r));
+    };
+
+    const handleSubmitForReview = async () => {
+        if (!selected) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/submit-review`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to submit for review');
+            refreshSelected('In Review');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to submit for review');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
+    const handleApprove = async () => {
+        if (!selected || !user) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/approve?user_id=${user.id}`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to approve training');
+            refreshSelected('Published');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to approve');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
+    const handleReject = async () => {
+        if (!selected || !user) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/reject?user_id=${user.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rejection_reason: rejectReason || null }),
+            });
+            if (!res.ok) throw new Error('Failed to reject training');
+            refreshSelected('Rejected');
+            setShowRejectInput(false);
+            setRejectReason('');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to reject');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
     // ── Detail view ──
     if (selected) {
         return (
@@ -428,10 +487,100 @@ export function TrainingModulesPage() {
                         </button>
 
                         <div className="mb-6">
-                            <h1 className="text-2xl font-semibold text-gray-900 capitalize">
-                                {selected.role} Training
-                            </h1>
-                            <p className="text-sm text-gray-500 mt-1">Created {selected.createdAt}</p>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-2xl font-semibold text-gray-900 capitalize">
+                                        {selected.role} Training
+                                    </h1>
+                                    <p className="text-sm text-gray-500 mt-1">Created {selected.createdAt}</p>
+                                </div>
+                                <StatusBadge status={selected.status} />
+                            </div>
+                        </div>
+
+                        {/* Review Actions */}
+                        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+                            {selected.status === 'Draft' && (
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-gray-600">This training is a draft. Submit it for review to publish.</p>
+                                    <button
+                                        onClick={handleSubmitForReview}
+                                        disabled={reviewLoading}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                                    >
+                                        {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                        Submit for Review
+                                    </button>
+                                </div>
+                            )}
+
+                            {selected.status === 'In Review' && (
+                                <div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm text-amber-700 font-medium">This training is awaiting review. Approve or reject it.</p>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={handleApprove}
+                                                disabled={reviewLoading}
+                                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                                Approve
+                                            </button>
+                                            <button
+                                                onClick={() => setShowRejectInput(!showRejectInput)}
+                                                disabled={reviewLoading}
+                                                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                <XCircle className="w-4 h-4" />
+                                                Reject
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {showRejectInput && (
+                                        <div className="mt-3 flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={rejectReason}
+                                                onChange={e => setRejectReason(e.target.value)}
+                                                placeholder="Reason for rejection (optional)"
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-400"
+                                            />
+                                            <button
+                                                onClick={handleReject}
+                                                disabled={reviewLoading}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Reject'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {selected.status === 'Published' && (
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-5 h-5 text-green-600" />
+                                    <p className="text-sm text-green-700 font-medium">This training is published and visible to employees.</p>
+                                </div>
+                            )}
+
+                            {selected.status === 'Rejected' && (
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <XCircle className="w-5 h-5 text-red-500" />
+                                        <p className="text-sm text-red-700">This training was rejected. You can resubmit it for review.</p>
+                                    </div>
+                                    <button
+                                        onClick={handleSubmitForReview}
+                                        disabled={reviewLoading}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                                    >
+                                        {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                        Resubmit for Review
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         <AdaptiveStudyUI training={selected} />
