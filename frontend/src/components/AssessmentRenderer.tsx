@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import {
     ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     AlertCircle, XCircle, RefreshCw, Sparkles, FileText,
-    CreditCard, PenTool, BookOpen, Scale, Lightbulb,
+    CreditCard, PenTool, BookOpen, Scale, Lightbulb, Pencil,
+    List, AlignLeft,
 } from 'lucide-react';
+import { useRememberingViewMode, type RememberingViewMode } from '../hooks/useRememberingViewMode';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -105,18 +107,24 @@ async function gradeAnswer(
     rubric: string,
     correctAnswer?: string,
 ): Promise<GradeResult> {
+    // Matches GradeAssessmentRequest schema exactly
     const body = {
         questions: [{
             question_id: questionId,
-            prompt,
-            role,
+            prompt: prompt || 'Answer the following question.',
+            role: role || 'developer',
             question_type: questionType,
-            rubric,
-            options: [],
+            bloom_level: null,
+            rubric: rubric || '',
+            options: [] as string[],
             correct_answer: correctAnswer ?? null,
+            answer_key: null,
         }],
         selected_answers: [{ question_id: questionId, answer }],
+        temperature: 0.2,
     };
+
+    console.log('[gradeAnswer] sending:', JSON.stringify(body, null, 2));
 
     const res = await fetch(GRADING_API, {
         method: 'POST',
@@ -124,11 +132,17 @@ async function gradeAnswer(
         body: JSON.stringify(body),
     });
 
-    if (!res.ok) throw new Error('Grading request failed');
+    if (!res.ok) {
+        const errText = await res.text();
+        console.error('[gradeAnswer] error ' + res.status + ':', errText);
+        throw new Error('Grading failed ' + res.status + ': ' + errText);
+    }
 
     const data = await res.json();
+    console.log('[gradeAnswer] response:', data);
     const detail = data.details?.[0] ?? {};
-    const rawScore = detail.score ?? 0;
+    const rawScore: number = detail.score ?? 0;
+    const normalizedScore = rawScore <= 1 ? rawScore : rawScore / 100;
     const normalizedCriteria = (detail.criterion_scores ?? []).map(
         (c: { criterion: string; weight: number; score: number; rationale: string }) => ({
             ...c,
@@ -136,7 +150,7 @@ async function gradeAnswer(
         }),
     );
     return {
-        score: rawScore > 1 ? rawScore / 100 : rawScore,
+        score: normalizedScore,
         feedback: detail.feedback ?? '',
         is_correct: detail.is_correct ?? false,
         strengths: detail.strengths,
@@ -148,11 +162,11 @@ async function gradeAnswer(
 // ─── Shared Feedback Display ────────────────────────────────────────────────
 
 function FeedbackPanel({
-    feedbackStatus,
-    feedback,
-    gradeResult,
-    onRegenerate,
-}: {
+                           feedbackStatus,
+                           feedback,
+                           gradeResult,
+                           onRegenerate,
+                       }: {
     feedbackStatus: FeedbackStatus;
     feedback: string;
     gradeResult: GradeResult | null;
@@ -231,11 +245,11 @@ function FeedbackPanel({
 // ─── Navigation ─────────────────────────────────────────────────────────────
 
 function QuestionNav({
-    index,
-    total,
-    onPrev,
-    onNext,
-}: {
+                         index,
+                         total,
+                         onPrev,
+                         onNext,
+                     }: {
     index: number;
     total: number;
     onPrev: () => void;
@@ -265,55 +279,285 @@ function QuestionNav({
     );
 }
 
+// ─── Remembering: bullet / long-form (same term+definition data as flashcards) ─
+
+function BulletRememberingView({ questions }: { questions: Question[] }) {
+    return (
+        <ul className="max-h-[min(28rem,70vh)] overflow-y-auto space-y-3 pr-1 list-none m-0 p-0">
+            {questions.map((q, i) => (
+                <li
+                    key={i}
+                    className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-800"
+                >
+                    <p className="font-semibold text-gray-900 whitespace-pre-wrap">{q.term || '—'}</p>
+                    <p className="mt-2 text-gray-700 whitespace-pre-wrap leading-relaxed">{q.definition || '—'}</p>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
+function LongFormRememberingView({ questions }: { questions: Question[] }) {
+    return (
+        <div className="max-h-[min(32rem,75vh)] overflow-y-auto space-y-8 pr-1">
+            {questions.map((q, i) => (
+                <section key={i} className="rounded-xl border border-gray-100 bg-white px-6 py-5 shadow-sm">
+                    <h3 className="text-base font-semibold text-gray-900 whitespace-pre-wrap">
+                        {q.term || '—'}
+                    </h3>
+                    <p className="mt-4 text-sm text-gray-700 leading-7 whitespace-pre-wrap">
+                        {q.definition || '—'}
+                    </p>
+                </section>
+            ))}
+        </div>
+    );
+}
+
 // ─── 1. Flashcard Assessment (Remembering) ──────────────────────────────────
 
-function FlashcardAssessment({ questions }: { questions: Question[] }) {
+function FlashcardAssessment({
+                                 questions,
+                                 enableEdit,
+                                 onQuestionsChange,
+                                 persistFlashcards,
+                                 onComplete,
+                             }: {
+    questions: Question[];
+    enableEdit?: boolean;
+    onQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
+}) {
     const [index, setIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [draftTerm, setDraftTerm] = useState('');
+    const [draftDefinition, setDraftDefinition] = useState('');
+
     const q = questions[index];
     if (!q) return null;
 
+    const canEdit = Boolean(enableEdit && onQuestionsChange);
+
+    const startEdit = (e: MouseEvent) => {
+        e.stopPropagation();
+        setDraftTerm(q.term ?? '');
+        setDraftDefinition(q.definition ?? '');
+        setEditing(true);
+        setIsFlipped(false);
+    };
+
+    const cancelEdit = () => {
+        setEditing(false);
+    };
+
+    const saveEdit = () => {
+        if (!onQuestionsChange) return;
+        const next = questions.map((item, i) =>
+            i === index ? { ...item, term: draftTerm, definition: draftDefinition } : item,
+        );
+        onQuestionsChange(next);
+        setEditing(false);
+    };
+
+    const goPrev = () => {
+        setIndex(i => Math.max(0, i - 1));
+        setIsFlipped(false);
+        setEditing(false);
+    };
+
+    const goNext = () => {
+        setIndex(i => Math.min(questions.length - 1, i + 1));
+        setIsFlipped(false);
+        setEditing(false);
+    };
+
     return (
         <div className="space-y-4">
-            <div onClick={() => setIsFlipped(!isFlipped)} className="relative h-56 cursor-pointer">
-                <div
-                    className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
-                    style={{
-                        background: isFlipped
-                            ? 'linear-gradient(135deg, #16a34a, #15803d)'
-                            : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)',
-                    }}
-                >
-                    <div>
-                        <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
-                        <p className="text-lg text-white font-medium">
-                            {isFlipped ? q.definition : q.term}
-                        </p>
-                        <p className="text-xs text-white/50 mt-6">Click to flip</p>
+            <div className="relative">
+                {canEdit && !editing && (
+                    <button
+                        type="button"
+                        onClick={startEdit}
+                        className="absolute top-2 right-2 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/90 bg-black/25 hover:bg-black/40 border border-white/20"
+                        aria-label="Edit flashcard"
+                    >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                    </button>
+                )}
+
+                {editing ? (
+                    <div
+                        className="min-h-56 rounded-xl p-6 border border-gray-200 bg-white space-y-3 shadow-sm"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">TERM</label>
+                            <textarea
+                                value={draftTerm}
+                                onChange={e => setDraftTerm(e.target.value)}
+                                rows={3}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#1e3a5f]"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-500 mb-1">DEFINITION</label>
+                            <textarea
+                                value={draftDefinition}
+                                onChange={e => setDraftDefinition(e.target.value)}
+                                rows={4}
+                                className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#1e3a5f]"
+                            />
+                        </div>
+                        <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={saveEdit}
+                                disabled={persistFlashcards}
+                                className="px-4 py-2 text-sm font-medium text-white bg-[#1e3a5f] rounded-lg hover:bg-[#152d4a] disabled:opacity-50"
+                            >
+                                Save
+                            </button>
+                            <button
+                                type="button"
+                                onClick={cancelEdit}
+                                disabled={persistFlashcards}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div
+                        onClick={() => setIsFlipped(!isFlipped)}
+                        className="relative h-56 cursor-pointer"
+                    >
+                        <div
+                            className="w-full h-full rounded-xl flex items-center justify-center p-8 text-center transition-all duration-300"
+                            style={{
+                                background: isFlipped
+                                    ? 'linear-gradient(135deg, #16a34a, #15803d)'
+                                    : 'linear-gradient(135deg, #1e3a5f, #2d4a6f)',
+                            }}
+                        >
+                            <div>
+                                <p className="text-xs text-white/60 mb-3">{isFlipped ? 'DEFINITION' : 'TERM'}</p>
+                                <p className="text-lg text-white font-medium whitespace-pre-wrap">
+                                    {isFlipped ? q.definition : q.term}
+                                </p>
+                                <p className="text-xs text-white/50 mt-6">Click to flip</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="flex justify-between">
                 <button
-                    onClick={() => { setIndex(i => Math.max(0, i - 1)); setIsFlipped(false); }}
+                    type="button"
+                    onClick={goPrev}
                     disabled={index === 0}
                     className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
                 >
                     <ChevronLeft className="w-4 h-4" /> Previous
                 </button>
                 <button
+                    type="button"
                     onClick={() => setIsFlipped(!isFlipped)}
-                    className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white"
+                    disabled={editing}
+                    className="flex items-center gap-1 px-3 py-2 text-sm text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white disabled:opacity-40"
                 >
                     <RotateCw className="w-4 h-4" /> Flip
                 </button>
                 <button
-                    onClick={() => { setIndex(i => Math.min(questions.length - 1, i + 1)); setIsFlipped(false); }}
+                    type="button"
+                    onClick={goNext}
                     disabled={index === questions.length - 1}
                     className="flex items-center gap-1 px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40"
                 >
                     Next <ChevronRight className="w-4 h-4" />
                 </button>
+            </div>
+            {index === questions.length - 1 && onComplete && (
+                <button
+                    onClick={() => onComplete(100, true)}
+                    className="w-full mt-3 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                    ✓ Mark Training Complete
+                </button>
+            )}
+        </div>
+    );
+}
+
+function RememberingPresentation({
+                                     assessment,
+                                     questions,
+                                     enableEdit,
+                                     onQuestionsChange,
+                                     persistFlashcards,
+                                     onComplete,
+                                 }: {
+    assessment: Assessment;
+    questions: Question[];
+    enableEdit?: boolean;
+    onQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
+}) {
+    const { mode, setMode } = useRememberingViewMode(assessment);
+
+    const options: { id: RememberingViewMode; label: string; icon: typeof List }[] = [
+        { id: 'bullet', label: 'Bullet', icon: List },
+        { id: 'flashcard', label: 'Flashcard', icon: CreditCard },
+        { id: 'long-form', label: 'Long-form', icon: AlignLeft },
+    ];
+
+    return (
+        <div className="space-y-4">
+            <div
+                role="tablist"
+                aria-label="Remembering display format"
+                className="flex flex-wrap gap-2"
+            >
+                {options.map(({ id, label, icon: Icon }) => (
+                    <button
+                        key={id}
+                        type="button"
+                        role="tab"
+                        id={`remembering-mode-${id}`}
+                        aria-selected={mode === id}
+                        aria-controls="remembering-content-panel"
+                        onClick={() => setMode(id)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                            mode === id
+                                ? 'bg-[#1e3a5f] text-white shadow-md'
+                                : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                        }`}
+                    >
+                        <Icon className="w-4 h-4" />
+                        {label}
+                    </button>
+                ))}
+            </div>
+            <div
+                role="tabpanel"
+                id="remembering-content-panel"
+                aria-labelledby={`remembering-mode-${mode}`}
+            >
+                {mode === 'bullet' && <BulletRememberingView questions={questions} />}
+                {mode === 'flashcard' && (
+                    <FlashcardAssessment
+                        questions={questions}
+                        enableEdit={enableEdit}
+                        onQuestionsChange={onQuestionsChange}
+                        persistFlashcards={persistFlashcards}
+                        onComplete={onComplete}
+                    />
+                )}
+                {mode === 'long-form' && <LongFormRememberingView questions={questions} />}
             </div>
         </div>
     );
@@ -321,7 +565,7 @@ function FlashcardAssessment({ questions }: { questions: Question[] }) {
 
 // ─── 2. Multiple Choice Assessment (Understanding) ──────────────────────────
 
-function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
+function MultipleChoiceAssessment({ questions, onComplete }: { questions: Question[]; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
@@ -339,6 +583,7 @@ function MultipleChoiceAssessment({ questions }: { questions: Question[] }) {
         const correct = answer === q.correct_answer;
         setStatus(correct ? 'correct' : 'incorrect');
         setFeedback(correct ? 'Correct! Well done.' : `The correct answer is: ${q.correct_answer}`);
+        onComplete?.(correct ? 100 : 50, correct);
     };
 
     const navigate = (dir: number) => {
@@ -421,7 +666,7 @@ function GradingProgressBar({ active }: { active: boolean }) {
 
 // ─── Shared descriptive submission hook ─────────────────────────────────────
 
-function useDescriptiveGrading(role: string) {
+function useDescriptiveGrading(role: string, onComplete?: (score: number, passed: boolean) => void) {
     const [answer, setAnswer] = useState('');
     const [submitted, setSubmitted] = useState(false);
     const [generating, setGenerating] = useState(false);
@@ -438,9 +683,15 @@ function useDescriptiveGrading(role: string) {
         if (!answer.trim()) return;
         setGenerating(true);
         try {
-            const rubric = q.rubric || q.grading_rubric || '';
+            const rawRubric: unknown = q.rubric || q.grading_rubric || '';
+            // Backend expects rubric as plain string — serialize if it's a JSON object
+            const rubric = typeof rawRubric === 'string'
+                ? rawRubric
+                : JSON.stringify(rawRubric);
+            // Include scenario in prompt so the grader has full context
+            const fullPrompt = [q.scenario, q.prompt || q.question].filter(Boolean).join('\n\n') || 'Answer the following question.';
             const result = await gradeAnswer(
-                `q-${Date.now()}`, q.prompt || q.question || '', answer,
+                `q-${Date.now()}`, fullPrompt, answer,
                 questionType, role, rubric, q.correct_answer,
             );
             setGradeResult(result);
@@ -448,6 +699,7 @@ function useDescriptiveGrading(role: string) {
             else if (result.score >= 0.4) setStatus('partial');
             else setStatus('incorrect');
             setFeedback(result.feedback || 'Grading complete.');
+            onComplete?.(Math.round(result.score * 100), result.score >= 0.7);
         } catch {
             setStatus('partial');
             setFeedback('Could not reach grading service. Please try again.');
@@ -461,9 +713,9 @@ function useDescriptiveGrading(role: string) {
 
 // ─── 3. Short Response Assessment (Applying) ────────────────────────────────
 
-function ShortResponseAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function ShortResponseAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -493,7 +745,7 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'short_response')}
                     disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -517,9 +769,9 @@ function ShortResponseAssessment({ questions, role }: { questions: Question[]; r
 
 // ─── 4. Case Study Assessment (Analyzing) ───────────────────────────────────
 
-function CaseStudyAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function CaseStudyAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -555,7 +807,7 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'case_study')}
                     disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -579,9 +831,9 @@ function CaseStudyAssessment({ questions, role }: { questions: Question[]; role:
 
 // ─── 5. Evaluation Assessment (Evaluating) ──────────────────────────────────
 
-function EvaluationAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function EvaluationAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const q = questions[index];
     if (!q) return null;
 
@@ -637,7 +889,7 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
             {!g.submitted ? (
                 <button
-                    onClick={() => g.submit(q, 'descriptive')}
+                    onClick={() => void g.submit(q, 'evaluation')}
                     disabled={!g.answer.trim() || g.generating}
                     className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2"
                 >
@@ -661,9 +913,9 @@ function EvaluationAssessment({ questions, role }: { questions: Question[]; role
 
 // ─── 6. Open-Ended Assessment (Creating) ────────────────────────────────────
 
-function OpenEndedAssessment({ questions, role }: { questions: Question[]; role: string }) {
+function OpenEndedAssessment({ questions, role, onComplete }: { questions: Question[]; role: string; onComplete?: (score: number, passed: boolean) => void }) {
     const [index, setIndex] = useState(0);
-    const g = useDescriptiveGrading(role);
+    const g = useDescriptiveGrading(role, onComplete);
     const [sectionAnswers, setSectionAnswers] = useState<Record<string, string>>({});
     const q = questions[index];
     if (!q) return null;
@@ -682,7 +934,7 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 
     const handleSubmit = () => {
         if (sections) g.setAnswer(combinedAnswer);
-        g.submit(q, 'descriptive');
+        void g.submit(q, 'short_response');
     };
 
     const isAnswerEmpty = sections
@@ -753,11 +1005,19 @@ function OpenEndedAssessment({ questions, role }: { questions: Question[]; role:
 // ─── Main Renderer ──────────────────────────────────────────────────────────
 
 export default function AssessmentRenderer({
-    assessment,
-    role = 'developer',
-}: {
+                                               assessment,
+                                               role = 'developer',
+                                               enableFlashcardEdit,
+                                               onFlashcardQuestionsChange,
+                                               persistFlashcards,
+                                               onComplete,
+                                           }: {
     assessment: Assessment;
     role?: string;
+    enableFlashcardEdit?: boolean;
+    onFlashcardQuestionsChange?: (questions: Question[]) => void;
+    persistFlashcards?: boolean;
+    onComplete?: (score: number, passed: boolean) => void;
 }) {
     const format = resolveFormat(assessment);
     const meta = FORMAT_META[format];
@@ -784,12 +1044,21 @@ export default function AssessmentRenderer({
                 )}
             </div>
 
-            {format === 'flashcard' && <FlashcardAssessment questions={questions} />}
-            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} />}
-            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} />}
-            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} />}
-            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} />}
-            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} />}
+            {format === 'flashcard' && (
+                <RememberingPresentation
+                    assessment={assessment}
+                    questions={questions}
+                    enableEdit={enableFlashcardEdit}
+                    onQuestionsChange={onFlashcardQuestionsChange}
+                    persistFlashcards={persistFlashcards}
+                    onComplete={onComplete}
+                />
+            )}
+            {format === 'multiple_choice' && <MultipleChoiceAssessment questions={questions} onComplete={onComplete} />}
+            {format === 'short_response' && <ShortResponseAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'case_study' && <CaseStudyAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'evaluation' && <EvaluationAssessment questions={questions} role={role} onComplete={onComplete} />}
+            {format === 'open_ended' && <OpenEndedAssessment questions={questions} role={role} onComplete={onComplete} />}
         </div>
     );
 }

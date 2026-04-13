@@ -57,7 +57,7 @@ const navItems = [
         active: false,
     },
     { icon: Users, label: "Roles & Assessments", href: "/roles", active: false },
-    { icon: BarChart3, label: "Analytics", href: "/analytics", active: false },
+    { icon: BarChart3, label: "Analytics", href: "/progress", active: false },
     { icon: Settings, label: "Settings", href: "/settings", active: false },
 ];
 
@@ -195,6 +195,7 @@ export function Dashboard() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
+    const [newName, setNewName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [creationStep, setCreationStep] = useState(0);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -368,8 +369,16 @@ export function Dashboard() {
 
             const createdId = data?.result?.training_row?.id ?? null;
             setLastCreatedId(createdId);
+            // Save name if provided
+            if (createdId && newName.trim()) {
+                await supabase
+                    .from('trainings')
+                    .update({ name: newName.trim() })
+                    .eq('id', createdId);
+            }
             setShowCreateModal(false);
             setNewRole("");
+            setNewName("");
             setSelectedSSPId("");
             setCreationStep(0);
             setShowSuccessModal(true);
@@ -570,7 +579,8 @@ export function Dashboard() {
                                         item.href === "/training-modules" ||
                                         item.href === "/ssp-documents" ||
                                         item.href === "/roles" ||
-                                        item.href === "/settings"
+                                        item.href === "/settings" ||
+                                        item.href === "/progress"
                                     ) {
                                         navigate(item.href);
                                         return;
@@ -942,8 +952,8 @@ export function Dashboard() {
                                             </p>
                                             <p className="text-xs text-gray-500 mt-0.5">
                                                 Created {new Date(item.created_at).toLocaleDateString("en-US", {
-                                                    month: "short", day: "numeric", year: "numeric",
-                                                })}
+                                                month: "short", day: "numeric", year: "numeric",
+                                            })}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -1029,6 +1039,18 @@ export function Dashboard() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">
                             Create Training Module
                         </h3>
+
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Training Name <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            placeholder="e.g. Q2 Developer Security Training"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]"
+                            disabled={isCreating}
+                        />
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Role

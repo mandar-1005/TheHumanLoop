@@ -26,6 +26,7 @@ interface Employee {
 
 interface Training {
     id: number;
+    name?: string | null;
     company_role: string;
     created_at: string;
 }
@@ -54,7 +55,7 @@ function Sidebar() {
         { icon: BookOpen, label: 'Training Modules', href: '/training-modules' },
         { icon: FileText, label: 'SSP Documents', href: '/ssp-documents' },
         { icon: Users, label: 'Roles & Assessments', href: '/roles' },
-        { icon: BarChart3, label: 'Analytics', href: null },
+        { icon: BarChart3, label: 'Analytics', href: '/progress' },
         { icon: Settings, label: 'Settings', href: '/settings' },
     ];
 
@@ -205,7 +206,7 @@ function AssignModal({
                             >
                                 <div>
                                     <p className="text-sm font-medium text-gray-900 capitalize">
-                                        {t.company_role} Training
+                                        {t.name || `${t.company_role} Training`}
                                     </p>
                                     <p className="text-xs text-gray-500 mt-0.5">
                                         Created {formatDate(t.created_at)}
@@ -470,7 +471,7 @@ export function RolesAssessmentsPage() {
 
         const { data: trainingData } = await supabase
             .from('trainings')
-            .select('id, company_role, created_at')
+            .select('id, name, company_role, created_at')
             .eq('company_id', profile!.organization_id)
             .order('created_at', { ascending: false });
 
