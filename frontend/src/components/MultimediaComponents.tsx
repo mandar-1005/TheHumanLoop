@@ -5,12 +5,17 @@ import {
     ChevronDown, ZoomIn, X, Image as ImageIcon,
 } from 'lucide-react';
 
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    securityLevel: 'loose',
-    fontFamily: 'Inter, system-ui, sans-serif',
-});
+let mermaidReady = false;
+function ensureMermaidInit() {
+    if (mermaidReady) return;
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'strict',
+        fontFamily: 'Inter, system-ui, sans-serif',
+    });
+    mermaidReady = true;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +57,7 @@ export function MermaidDiagram({ diagram }: { diagram: MediaDiagram }) {
 
     useEffect(() => {
         if (!containerRef.current) return;
+        ensureMermaidInit();
         const id = `mermaid-${diagram.id}-${Date.now()}`;
         const code = diagram.mermaid_code.replace(/\\n/g, '\n');
 

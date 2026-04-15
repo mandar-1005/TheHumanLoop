@@ -6,8 +6,9 @@ import {
     LayoutDashboard, BookOpen, FileText, Users,
     BarChart3, Settings, Shield, LogOut,
     CheckCircle, XCircle, Clock, TrendingUp,
-    Search, ChevronDown, ChevronUp, Loader2, Award,
+    Search, ChevronDown, ChevronUp, Loader2, Award, Download,
 } from 'lucide-react';
+import { logActivity } from '../lib/activityLog';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer, Cell,
@@ -170,6 +171,58 @@ function EmpRow({ ep }: { ep: EmployeeProgress }) {
             )}
         </>
     );
+}
+
+// ─── CSV export ─────────────────────────────────────────────────────────────
+
+function csvEscape(val: string | number | boolean): string {
+    const s = String(val);
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+}
+
+function downloadProgressCsv(rows: EmployeeProgress[], orgLabel: string) {
+    const lines: string[] = [];
+    lines.push(
+        ['Employee', 'Role', 'Assigned', 'Completed', 'CompletionPct', 'AvgScore', 'Status'].map(csvEscape).join(','),
+    );
+    for (const ep of rows) {
+        const status =
+            ep.completionRate === 100 ? 'Complete' : ep.completed > 0 ? 'In Progress' : 'Not Started';
+        lines.push(
+            [
+                `${ep.employee.first_name} ${ep.employee.last_name}`,
+                ep.employee.role,
+                ep.assigned,
+                ep.completed,
+                ep.completionRate,
+                ep.avgScore ?? '',
+                status,
+            ]
+                .map(csvEscape)
+                .join(','),
+        );
+    }
+    lines.push('');
+    lines.push('Evidence rows');
+    lines.push(['Employee', 'TrainingId', 'CompanyRole', 'Score', 'Passed', 'CompletedAt'].map(csvEscape).join(','));
+    for (const ep of rows) {
+        const name = `${ep.employee.first_name} ${ep.employee.last_name}`;
+        for (const ev of ep.evidence) {
+            lines.push(
+                [name, ev.training_id, ev.company_role, ev.score, ev.passed, ev.completed_at]
+                    .map(csvEscape)
+                    .join(','),
+            );
+        }
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `training-progress-${orgLabel.slice(0, 20)}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -336,7 +389,20 @@ export function ProgressDashboardPage() {
                                 <h3 className="text-base font-semibold text-gray-900">Employee Progress</h3>
                                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{filtered.length}</span>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 flex-wrap justify-end">
+                                <button
+                                    type="button"
+                                    disabled={loading || filtered.length === 0}
+                                    onClick={() => {
+                                        const label = profile?.organization_id ?? 'export';
+                                        downloadProgressCsv(filtered, label);
+                                        logActivity('Exported analytics CSV', `${filtered.length} employees`);
+                                    }}
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    Export CSV
+                                </button>
                                 <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
                                         className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none">
                                     <option value="name">Sort: Name</option>

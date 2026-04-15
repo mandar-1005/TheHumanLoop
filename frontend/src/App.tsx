@@ -1,10 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { CommandPalette } from './components/CommandPalette';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { RoleGuard } from './components/RoleGuard';
 import { LoginPage } from './pages/Login';
 import { RegistrationPage as Register } from './pages/Register';
-import { AccountPage } from './pages/Account';
+
 import { Dashboard } from './pages/Dashboard';
 import { TrainingModulesPage } from './pages/TrainingModules';
 import { SSPDocumentsPage } from './pages/SSPDocuments';
@@ -18,6 +19,7 @@ function App() {
     return (
         <AuthProvider>
             <Router>
+                <CommandPalette />
                 <Routes>
                     <Route path="/" element={<Navigate to="/login" replace />} />
 
@@ -35,9 +37,7 @@ function App() {
                     <Route path="/ssp-documents" element={
                         <ProtectedRoute><RoleGuard requireAdmin><SSPDocumentsPage /></RoleGuard></ProtectedRoute>
                     } />
-                    <Route path="/account" element={
-                        <ProtectedRoute><RoleGuard requireAdmin><AccountPage /></RoleGuard></ProtectedRoute>
-                    } />
+                    <Route path="/account" element={<Navigate to="/settings" replace />} />
                     <Route path="/roles" element={
                         <ProtectedRoute><RoleGuard requireAdmin><RolesAssessmentsPage /></RoleGuard></ProtectedRoute>
                     } />

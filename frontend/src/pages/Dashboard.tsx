@@ -11,12 +11,14 @@ import {
     Plus,
     TrendingUp,
     TrendingDown,
+    ChevronRight,
     MoreVertical,
     Shield,
     AlertTriangle,
     CheckCircle,
     Clock,
     Download,
+    ExternalLink,
     LogOut,
     Upload,
     Trash2,
@@ -190,8 +192,22 @@ export function Dashboard() {
     const { signOut, user } = useAuth();
     const navigate = useNavigate();
 
-    const [activeTab, setActiveTab] = useState("Developers");
-    const tabs = ["Developers", "Security Leads", "Team Leads", "Other"];
+    const [activeTab, setActiveTab] = useState("All");
+    const [searchQuery, setSearchQuery] = useState("");
+    const tabs = ["All", "Developers", "Security Leads", "Team Leads", "Other"];
+
+    const tabRoleMap: Record<string, string[]> = {
+        Developers: ["Developer"],
+        "Security Leads": ["Security Lead"],
+        "Team Leads": ["Team Lead"],
+    };
+    const filteredModules = trainingModules.filter(m => {
+        const matchesTab = activeTab === "All"
+            || (tabRoleMap[activeTab] ? tabRoleMap[activeTab].includes(m.role) : !Object.values(tabRoleMap).flat().includes(m.role));
+        const q = searchQuery.toLowerCase();
+        const matchesSearch = !q || m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q) || m.status.toLowerCase().includes(q);
+        return matchesTab && matchesSearch;
+    });
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
@@ -215,6 +231,10 @@ export function Dashboard() {
     const [sspLoading, setSSPLoading] = useState(true);
 
     const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
+    const [successStep, setSuccessStep] = useState<'draft' | 'in_review' | 'published' | 'rejected'>('draft');
+    const [successLoading, setSuccessLoading] = useState(false);
+    const [successRejectReason, setSuccessRejectReason] = useState('');
+    const [showSuccessRejectInput, setShowSuccessRejectInput] = useState(false);
 
     type ReviewItem = {
         id: number;
@@ -229,6 +249,8 @@ export function Dashboard() {
     const [rejectReason, setRejectReason] = useState("");
 
     const [showMediaModal, setShowMediaModal] = useState<number | null>(null);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [openRowMenu, setOpenRowMenu] = useState<number | null>(null);
     const [mediaImages, setMediaImages] = useState<{ id: string; url: string; caption: string }[]>([]);
     const [mediaUploading, setMediaUploading] = useState(false);
     const mediaFileRef = useRef<HTMLInputElement>(null);
@@ -381,6 +403,9 @@ export function Dashboard() {
             setNewName("");
             setSelectedSSPId("");
             setCreationStep(0);
+            setSuccessStep('draft');
+            setShowSuccessRejectInput(false);
+            setSuccessRejectReason('');
             setShowSuccessModal(true);
         } catch (err) {
             setCreationStep(0);
@@ -636,14 +661,73 @@ export function Dashboard() {
                                     <input
                                         type="text"
                                         placeholder="Search trainings..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
                                         className="pl-10 pr-4 py-2 w-80 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                     />
                                 </div>
 
-                                <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                                    <Bell className="w-5 h-5 text-gray-600" />
-                                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-                                </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowNotifications(n => !n)}
+                                        className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                    >
+                                        <Bell className="w-5 h-5 text-gray-600" />
+                                        {reviewQueue.length > 0 && (
+                                            <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1">
+                                                {reviewQueue.length}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {showNotifications && (
+                                        <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                        <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <div className="max-h-72 overflow-y-auto">
+                                                {reviewQueue.length === 0 ? (
+                                                    <div className="p-6 text-center">
+                                                        <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                        <p className="text-sm text-gray-500">No pending notifications</p>
+                                                    </div>
+                                                ) : (
+                                                    reviewQueue.map(item => (
+                                                        <div key={item.id} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                            <div className="flex items-start gap-3">
+                                                                <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                                    <Clock className="w-4 h-4 text-amber-600" />
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-sm font-medium text-gray-900 capitalize">{item.company_role} Training</p>
+                                                                    <p className="text-xs text-gray-500">Awaiting review</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                            {reviewQueue.length > 0 && (
+                                                <div className="p-3 border-t border-gray-200">
+                                                    <button
+                                                        onClick={() => {
+                                                            setShowNotifications(false);
+                                                            document.getElementById("review-queue-section")?.scrollIntoView({ behavior: "smooth" });
+                                                        }}
+                                                        className="w-full text-center text-xs font-medium text-[#1e3a5f] hover:underline"
+                                                    >
+                                                        View Review Queue
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        </>
+                                    )}
+                                </div>
 
                                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                                     <div className="text-right">
@@ -674,8 +758,12 @@ export function Dashboard() {
                                     <h3 className="text-sm font-medium text-gray-600">
                                         {metric.title}
                                     </h3>
-                                    <button className="text-gray-400 hover:text-gray-600">
-                                        <MoreVertical className="w-4 h-4" />
+                                    <button
+                                        onClick={() => navigate("/progress")}
+                                        className="text-gray-400 hover:text-[#1e3a5f] transition-colors"
+                                        title="View details in Analytics"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
                                     </button>
                                 </div>
                                 <div className="space-y-2">
@@ -763,7 +851,7 @@ export function Dashboard() {
                                 </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-200">
-                                {trainingModules.map((module) => (
+                                {filteredModules.map((module) => (
                                     <tr key={module.id} className="hover:bg-gray-50">
                                         <td className="px-6 py-4">
                                             <p className="text-sm font-medium text-gray-900">
@@ -801,9 +889,33 @@ export function Dashboard() {
                         </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <button className="text-gray-400 hover:text-gray-600">
-                                                <MoreVertical className="w-4 h-4" />
-                                            </button>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => setOpenRowMenu(openRowMenu === module.id ? null : module.id)}
+                                                    className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 transition-colors"
+                                                >
+                                                    <MoreVertical className="w-4 h-4" />
+                                                </button>
+                                                {openRowMenu === module.id && (
+                                                    <>
+                                                        <div className="fixed inset-0 z-30" onClick={() => setOpenRowMenu(null)} />
+                                                        <div className="absolute right-0 top-8 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1">
+                                                            <button
+                                                                onClick={() => { setOpenRowMenu(null); navigate("/training-modules"); }}
+                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                                            >
+                                                                <ExternalLink className="w-3.5 h-3.5" /> View Module
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { setOpenRowMenu(null); navigate("/progress"); }}
+                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                                            >
+                                                                <BarChart3 className="w-3.5 h-3.5" /> View Analytics
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -859,7 +971,13 @@ export function Dashboard() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <button className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors">
+                                        <button
+                                            onClick={() => {
+                                                setSelectedSSPId(doc.id);
+                                                setShowCreateModal(true);
+                                            }}
+                                            className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors"
+                                        >
                                             Generate Training
                                         </button>
                                     </div>
@@ -900,7 +1018,11 @@ export function Dashboard() {
                           </span>
                                                 </div>
                                             </div>
-                                            <button className="text-gray-400 hover:text-gray-600">
+                                            <button
+                                                onClick={() => navigate("/training-modules")}
+                                                className="text-gray-400 hover:text-[#1e3a5f] transition-colors"
+                                                title="View in Training Modules"
+                                            >
                                                 <Download className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -911,7 +1033,7 @@ export function Dashboard() {
                     </div>
 
                     {/* ── Review Queue ── */}
-                    <div className="bg-white rounded-xl border border-gray-200">
+                    <div id="review-queue-section" className="bg-white rounded-xl border border-gray-200">
                         <div className="p-6 border-b border-gray-200">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -1202,42 +1324,195 @@ export function Dashboard() {
             {/* ── Success modal ── */}
             {showSuccessModal && (
                 <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-6 text-center shadow-xl">
-                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
+                    <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-6 shadow-xl">
+                        {/* Step indicator */}
+                        <div className="flex items-center justify-center gap-2 mb-5">
+                            {(['draft', 'in_review', 'published'] as const).map((step, i) => {
+                                const labels = ['Draft', 'In Review', 'Published'];
+                                const stepOrder = { draft: 0, in_review: 1, published: 2, rejected: -1 };
+                                const current = stepOrder[successStep];
+                                const isDone = current > i;
+                                const isActive = current === i;
+                                return (
+                                    <div key={step} className="flex items-center gap-2">
+                                        {i > 0 && <div className={`w-8 h-0.5 ${isDone || isActive ? 'bg-[#1e3a5f]' : 'bg-gray-200'}`} />}
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                                            isDone ? 'bg-green-500 text-white' : isActive ? 'bg-[#1e3a5f] text-white' : 'bg-gray-200 text-gray-500'
+                                        }`}>
+                                            {isDone ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                                        </div>
+                                        <span className={`text-xs font-medium ${isDone ? 'text-green-600' : isActive ? 'text-[#1e3a5f]' : 'text-gray-400'}`}>
+                                            {labels[i]}
+                                        </span>
+                                    </div>
+                                );
+                            })}
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">Training Module Created!</h3>
-                        <p className="text-sm text-gray-500 mb-6">
-                            Your training module has been saved as a <strong>Draft</strong>. Submit it for review to make it available to employees.
-                        </p>
-                        <div className="flex flex-col gap-2">
-                            {lastCreatedId && (
-                                <button
-                                    onClick={async () => {
-                                        await submitForReview(lastCreatedId);
-                                        setShowSuccessModal(false);
-                                        setLastCreatedId(null);
-                                    }}
-                                    className="w-full px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
-                                >
-                                    Submit for Review
-                                </button>
-                            )}
-                            <button
-                                onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
-                                className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
-                            >
-                                View Training Modules
-                            </button>
-                            <button
-                                onClick={() => setShowSuccessModal(false)}
-                                className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                            >
-                                Keep as Draft
-                            </button>
-                        </div>
+
+                        {/* Draft step */}
+                        {successStep === 'draft' && (
+                            <div className="text-center">
+                                <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <FileText className="w-7 h-7 text-[#1e3a5f]" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Training Created!</h3>
+                                <p className="text-sm text-gray-500 mb-5">
+                                    Your training module has been saved as a <strong>Draft</strong>. Submit it for review or approve it directly.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    {lastCreatedId && (
+                                        <button
+                                            onClick={async () => {
+                                                setSuccessLoading(true);
+                                                await submitForReview(lastCreatedId);
+                                                setSuccessStep('in_review');
+                                                setSuccessLoading(false);
+                                            }}
+                                            disabled={successLoading}
+                                            className="w-full px-4 py-2.5 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            {successLoading ? <Clock className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                                            Submit for Review
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
+                                        className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
+                                    >
+                                        View Training Modules
+                                    </button>
+                                    <button
+                                        onClick={() => setShowSuccessModal(false)}
+                                        className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        Keep as Draft
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* In Review step */}
+                        {successStep === 'in_review' && (
+                            <div className="text-center">
+                                <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Clock className="w-7 h-7 text-amber-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Ready for Review</h3>
+                                <p className="text-sm text-gray-500 mb-5">
+                                    Training is now <strong>In Review</strong>. Approve to publish it to employees, or reject it.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    {lastCreatedId && (
+                                        <>
+                                            <button
+                                                onClick={async () => {
+                                                    setSuccessLoading(true);
+                                                    await approveTraining(lastCreatedId);
+                                                    setSuccessStep('published');
+                                                    setSuccessLoading(false);
+                                                }}
+                                                disabled={successLoading}
+                                                className="w-full px-4 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                {successLoading ? <Clock className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                                Approve &amp; Publish
+                                            </button>
+                                            {!showSuccessRejectInput ? (
+                                                <button
+                                                    onClick={() => setShowSuccessRejectInput(true)}
+                                                    disabled={successLoading}
+                                                    className="w-full px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                                                >
+                                                    <X className="w-4 h-4" /> Reject
+                                                </button>
+                                            ) : (
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={successRejectReason}
+                                                        onChange={e => setSuccessRejectReason(e.target.value)}
+                                                        placeholder="Reason (optional)"
+                                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-400"
+                                                    />
+                                                    <button
+                                                        onClick={async () => {
+                                                            setSuccessLoading(true);
+                                                            await rejectTraining(lastCreatedId);
+                                                            setSuccessStep('rejected');
+                                                            setSuccessLoading(false);
+                                                        }}
+                                                        disabled={successLoading}
+                                                        className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                                                    >
+                                                        Confirm
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
+                                        className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        View Training Modules
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Published step */}
+                        {successStep === 'published' && (
+                            <div className="text-center">
+                                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <CheckCircle className="w-7 h-7 text-green-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Training Published!</h3>
+                                <p className="text-sm text-gray-500 mb-5">
+                                    This training is now <strong>live</strong> and visible to employees.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
+                                        className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
+                                    >
+                                        View Training Modules
+                                    </button>
+                                    <button
+                                        onClick={() => setShowSuccessModal(false)}
+                                        className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Rejected step */}
+                        {successStep === 'rejected' && (
+                            <div className="text-center">
+                                <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <X className="w-7 h-7 text-red-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-1">Training Rejected</h3>
+                                <p className="text-sm text-gray-500 mb-5">
+                                    This training has been rejected and will not be published.
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        onClick={() => { setShowSuccessModal(false); navigate("/training-modules"); }}
+                                        className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
+                                    >
+                                        View Training Modules
+                                    </button>
+                                    <button
+                                        onClick={() => setShowSuccessModal(false)}
+                                        className="w-full px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

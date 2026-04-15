@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { useStudyResume } from '../hooks/useStudyResume';
+import { StudyToolsPanel } from '../components/StudyToolsPanel';
+import { logActivity } from '../lib/activityLog';
 import {
     Shield, LogOut, BookOpen,
     BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
@@ -187,8 +190,18 @@ function AdaptiveStudyUI({ training, onComplete }: {
     training: TrainingModule;
     onComplete?: (score: number, passed: boolean) => void;
 }) {
-    const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
+    const {
+        contentIndex,
+        setContentIndex,
+        studyMode,
+        setStudyMode,
+        resumeApplied,
+    } = useStudyResume(training.id);
+    const [hideResumeBanner, setHideResumeBanner] = useState(false);
+
+    useEffect(() => {
+        setHideResumeBanner(false);
+    }, [training.id]);
 
     const content = training.contents[contentIndex];
 
@@ -196,6 +209,18 @@ function AdaptiveStudyUI({ training, onComplete }: {
 
     return (
         <div className="space-y-6">
+            {resumeApplied && !hideResumeBanner && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-sm text-blue-900">
+                    <span>Restored where you left off (module and tab are saved in this browser).</span>
+                    <button
+                        type="button"
+                        onClick={() => setHideResumeBanner(true)}
+                        className="text-xs font-medium text-blue-700 hover:underline flex-shrink-0"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
             {training.contents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {training.contents.map((_c, i) => (
@@ -242,6 +267,7 @@ function AdaptiveStudyUI({ training, onComplete }: {
 
             {studyMode === 'guide' && (
                 <>
+                    <StudyToolsPanel trainingId={training.id} studyGuideMarkdown={content.study_guide} />
                     <StudyGuideNarrator text={content.study_guide} />
                     <div className="bg-white border border-gray-200 rounded-xl p-6">
                         <StudyGuideRenderer markdown={content.study_guide} media={content.media} />
@@ -385,6 +411,13 @@ export function MyTrainingPage() {
     const formatDate = (d: string) =>
         new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+    const dueMs = (a: AssignedTraining) => {
+        if (a.due_date) return new Date(a.due_date).getTime();
+        const d = new Date(a.assigned_at);
+        d.setDate(d.getDate() + 7);
+        return d.getTime();
+    };
+
     const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.email ?? 'User';
     const initials = profile
         ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase()
@@ -462,6 +495,7 @@ export function MyTrainingPage() {
             console.error('training_evidence save failed:', saveError);
         } else {
             console.log('training_evidence saved successfully');
+            logActivity('Assessment completed', `${activeTraining.name || activeTraining.role} · ${safeScore}/100`);
         }
 
         // Refresh scores
@@ -539,6 +573,36 @@ export function MyTrainingPage() {
                     </header>
 
                     <main className="p-8 space-y-6">
+                        {(() => {
+                            const now = Date.now();
+                            const threeDays = 3 * 24 * 60 * 60 * 1000;
+                            let overdue = 0;
+                            let soon = 0;
+                            for (const a of assignments) {
+                                const t = getTrainingFromAssignment(a);
+                                if (!t) continue;
+                                const sc = getScore(t.id);
+                                if (sc) continue;
+                                const dm = dueMs(a);
+                                if (dm < now) overdue++;
+                                else if (dm - now <= threeDays) soon++;
+                            }
+                            if (overdue === 0 && soon === 0) return null;
+                            return (
+                                <div className="space-y-2">
+                                    {overdue > 0 && (
+                                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                                            <strong>{overdue}</strong> assignment{overdue !== 1 ? 's are' : ' is'} overdue — please complete {overdue !== 1 ? 'them' : 'it'} as soon as possible.
+                                        </div>
+                                    )}
+                                    {soon > 0 && (
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                            <strong>{soon}</strong> assignment{soon !== 1 ? 's are' : ' is'} due within the next 3 days.
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                         {/* Summary cards */}
                         <div className="grid grid-cols-3 gap-6">
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -633,7 +697,13 @@ export function MyTrainingPage() {
                                                                 {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
                                                             </button>
                                                             {score && (
-                                                                <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        logActivity('Viewed certificate', t?.name || `${t?.company_role ?? ''} training`);
+                                                                        setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed });
+                                                                    }}
+                                                                    className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline"
+                                                                >
                                                                     <Award className="w-3 h-3" /> Certificate
                                                                 </button>
                                                             )}

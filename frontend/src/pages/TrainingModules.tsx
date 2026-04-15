@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useStudyResume } from '../hooks/useStudyResume';
+import { StudyToolsPanel } from '../components/StudyToolsPanel';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle, CheckCircle, XCircle, Send, Loader2, Sparkles, Trash2, Pencil, Check, X } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle, CheckCircle, XCircle, Send, Loader2, Trash2, Pencil, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
@@ -236,8 +238,18 @@ function AdaptiveStudyUI({
     onFlashcardQuestionsChange?: (contentIndex: number, questions: Question[]) => void;
     persistFlashcards?: boolean;
 }) {
-    const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
+    const {
+        contentIndex,
+        setContentIndex,
+        studyMode,
+        setStudyMode,
+        resumeApplied,
+    } = useStudyResume(training.id);
+    const [hideResumeBanner, setHideResumeBanner] = useState(false);
+
+    useEffect(() => {
+        setHideResumeBanner(false);
+    }, [training.id]);
 
     const content = workingContents[contentIndex];
 
@@ -247,6 +259,18 @@ function AdaptiveStudyUI({
 
     return (
         <div className="space-y-6">
+            {resumeApplied && !hideResumeBanner && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-sm text-blue-900">
+                    <span>Restored where you left off (saved in this browser).</span>
+                    <button
+                        type="button"
+                        onClick={() => setHideResumeBanner(true)}
+                        className="text-xs font-medium text-blue-700 hover:underline flex-shrink-0"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
             {workingContents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {workingContents.map((_c, i) => {
@@ -300,6 +324,7 @@ function AdaptiveStudyUI({
 
             {studyMode === 'guide' && (
                 <>
+                    <StudyToolsPanel trainingId={training.id} studyGuideMarkdown={content.study_guide} />
                     <StudyGuideNarrator text={content.study_guide} />
                     <div className="bg-white border border-gray-200 rounded-xl p-6">
                         <StudyGuideRenderer markdown={content.study_guide} media={content.media} />
@@ -729,17 +754,17 @@ export function TrainingModulesPage() {
                                 <tbody className="divide-y divide-gray-200">
                                 {loading && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
                                     </tr>
                                 )}
                                 {!loading && error && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
                                     </tr>
                                 )}
                                 {!loading && !error && rows.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
                                     </tr>
                                 )}
                                 {!loading && !error && rows.map((row) => (

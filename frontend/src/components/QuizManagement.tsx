@@ -78,6 +78,9 @@ export function QuizManagement() {
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [selectedQuizzes, setSelectedQuizzes] = useState<Set<string>>(new Set());
   const [showExportMenu, setShowExportMenu] = useState<string | null>(null);
+  const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null);
+  const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
+  const [editForm, setEditForm] = useState({ title: '', status: '' as Quiz['status'] });
 
   const roles = ['All', 'Developer', 'Security Lead', 'Team Lead', 'Compliance Officer', 'All Roles'];
   const statuses = ['All', 'Active', 'Draft', 'Archived'];
@@ -152,6 +155,20 @@ export function QuizManagement() {
     } else {
       setSelectedQuizzes(new Set(filteredQuizzes.map(q => q.id)));
     }
+  };
+
+  const handleDelete = (quizId: string) => {
+    setQuizzes(prev => prev.filter(q => q.id !== quizId));
+    selectedQuizzes.delete(quizId);
+    setSelectedQuizzes(new Set(selectedQuizzes));
+  };
+
+  const handleEditSave = () => {
+    if (!editingQuiz) return;
+    setQuizzes(prev => prev.map(q =>
+      q.id === editingQuiz.id ? { ...q, title: editForm.title, status: editForm.status } : q
+    ));
+    setEditingQuiz(null);
   };
 
   const getStatusColor = (status: string) => {
@@ -337,10 +354,18 @@ export function QuizManagement() {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                    <button
+                      onClick={() => setPreviewQuiz(quiz)}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      title="Preview quiz"
+                    >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors">
+                    <button
+                      onClick={() => { setEditingQuiz(quiz); setEditForm({ title: quiz.title, status: quiz.status }); }}
+                      className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                      title="Edit quiz"
+                    >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     
@@ -379,7 +404,11 @@ export function QuizManagement() {
                       )}
                     </div>
 
-                    <button className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors">
+                    <button
+                      onClick={() => handleDelete(quiz.id)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                      title="Delete quiz"
+                    >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -403,6 +432,70 @@ export function QuizManagement() {
           Showing {filteredQuizzes.length} of {quizzes.length} quizzes
         </p>
       </div>
+
+      {/* Preview Modal */}
+      {previewQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Quiz Preview</h3>
+              <button onClick={() => setPreviewQuiz(null)} className="text-gray-400 hover:text-gray-600">
+                <MoreVertical className="w-4 h-4 rotate-90" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div><p className="text-xs font-medium text-gray-500 uppercase">Title</p><p className="text-sm text-gray-900">{previewQuiz.title}</p></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><p className="text-xs font-medium text-gray-500 uppercase">Role</p><p className="text-sm text-gray-900">{previewQuiz.role}</p></div>
+                <div><p className="text-xs font-medium text-gray-500 uppercase">Status</p><p className="text-sm"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(previewQuiz.status)}`}>{previewQuiz.status}</span></p></div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><p className="text-xs font-medium text-gray-500 uppercase">Bloom Level</p><p className="text-sm font-semibold text-purple-700">{previewQuiz.bloomLevel}</p></div>
+                <div><p className="text-xs font-medium text-gray-500 uppercase">Questions</p><p className="text-sm font-semibold text-gray-900">{previewQuiz.questions}</p></div>
+                <div><p className="text-xs font-medium text-gray-500 uppercase">Avg Score</p><p className="text-sm font-semibold text-gray-900">{previewQuiz.avgScore > 0 ? `${previewQuiz.avgScore}%` : 'N/A'}</p></div>
+              </div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase">Completions</p><p className="text-sm text-gray-900">{previewQuiz.completions} total</p></div>
+              <div><p className="text-xs font-medium text-gray-500 uppercase">Created</p><p className="text-sm text-gray-900">{previewQuiz.createdDate}</p></div>
+            </div>
+            <button onClick={() => setPreviewQuiz(null)} className="w-full mt-5 px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a]">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-xl shadow-xl p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Quiz</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                <input
+                  type="text" value={editForm.title}
+                  onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={e => setEditForm(f => ({ ...f, status: e.target.value as Quiz['status'] }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 bg-white"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Archived">Archived</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setEditingQuiz(null)} className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={handleEditSave} className="flex-1 px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a]">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
