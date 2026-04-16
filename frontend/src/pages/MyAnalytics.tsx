@@ -15,6 +15,7 @@ interface EvidenceRow {
     completed_at: string;
     assessment_type?: string | null;
     training_name?: string | null;
+    min_score?: number | null;
 }
 
 function Sidebar() {
@@ -113,7 +114,7 @@ export function MyAnalyticsPage() {
         if (!user) return;
         const load = async () => {
             setLoading(true);
-            const [{ data: evData }, { count }] = await Promise.all([
+            const [{ data: evData }, { data: assignData }] = await Promise.all([
                 supabase
                     .from('training_evidence')
                     .select('training_id, company_role, score, passed, completed_at, assessment_type')
@@ -121,10 +122,14 @@ export function MyAnalyticsPage() {
                     .order('completed_at', { ascending: false }),
                 supabase
                     .from('assignments')
-                    .select('*', { count: 'exact', head: true })
+                    .select('training_id, min_score')
                     .eq('user_id', user.id),
             ]);
             const rawEvidence = (evData ?? []) as EvidenceRow[];
+            const assignments = (assignData ?? []) as { training_id: number; min_score: number | null }[];
+            const minScoreMap: Record<number, number | null> = Object.fromEntries(
+                assignments.map(a => [a.training_id, a.min_score ?? null])
+            );
 
             // Fetch training names for all training_ids in evidence
             const trainingIds = [...new Set(rawEvidence.map(e => e.training_id).filter(Boolean))];
@@ -141,14 +146,15 @@ export function MyAnalyticsPage() {
                 }
             }
 
-            // Merge names into evidence rows
+            // Merge names and min_score into evidence rows
             const evidenceWithNames = rawEvidence.map(e => ({
                 ...e,
                 training_name: nameMap[e.training_id] || null,
+                min_score: minScoreMap[e.training_id] ?? null,
             }));
 
             setEvidence(evidenceWithNames);
-            setTotalAssigned(count ?? 0);
+            setTotalAssigned(assignments.length);
             setLoading(false);
         };
         void load();
@@ -157,10 +163,26 @@ export function MyAnalyticsPage() {
     const trainingTitle = (e: EvidenceRow) =>
         e.training_name || `${e.company_role} Training`;
 
-    const completed  = evidence.length;
-    const passed     = evidence.filter(e => e.passed).length;
-    const avgScore   = completed > 0 ? Math.round(evidence.reduce((s, e) => s + e.score, 0) / completed) : null;
-    const compRate   = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
+    // Helper: does this evidence row meet its min_score requirement?
+    const meetsMin = (e: EvidenceRow) => {
+        const req = e.min_score ?? null;
+        return req !== null ? e.score >= req : e.passed;
+    };
+
+    // Use unique training_ids (latest attempt per training)
+    const latestByTraining: Record<number, EvidenceRow> = {};
+    evidence.forEach(e => {
+        const ex = latestByTraining[e.training_id];
+        if (!ex || new Date(e.completed_at) > new Date(ex.completed_at)) {
+            latestByTraining[e.training_id] = e;
+        }
+    });
+    const latestEvidence = Object.values(latestByTraining);
+
+    const completed  = latestEvidence.filter(e => meetsMin(e)).length;
+    const passed     = latestEvidence.filter(e => meetsMin(e)).length; // same — met min = earned cert
+    const avgScore   = latestEvidence.length > 0 ? Math.round(latestEvidence.reduce((s, e) => s + e.score, 0) / latestEvidence.length) : null;
+    const compRate   = totalAssigned > 0 ? Math.min(100, Math.round((completed / totalAssigned) * 100)) : 0;
     const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     return (
@@ -215,14 +237,14 @@ export function MyAnalyticsPage() {
                         </div>
 
                         {/* Certificates section */}
-                        {passed > 0 && (
+                        {latestEvidence.filter(e => meetsMin(e)).length > 0 && (
                             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                                 <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                                     <Award className="w-4 h-4 text-amber-500" />
                                     <h3 className="text-base font-semibold text-gray-900">Certificates Earned</h3>
                                 </div>
                                 <div className="p-6 grid grid-cols-2 gap-4">
-                                    {evidence.filter(e => e.passed).map((e, i) => (
+                                    {latestEvidence.filter(e => meetsMin(e)).map((e, i) => (
                                         <div key={i} className="flex items-center justify-between p-4 border border-amber-200 bg-amber-50 rounded-xl">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">

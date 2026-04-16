@@ -34,6 +34,7 @@ interface Training {
 interface Assignment {
     user_id: string;
     training_id: number;
+    min_score?: number | null;
 }
 
 const JOB_ROLES = [
@@ -124,6 +125,8 @@ function AssignModal({
 }) {
     const { user } = useAuth();
     const [selected, setSelected] = useState<number[]>(existingAssignments);
+    // per-training min_score: null = completion only, number = minimum grade required
+    const [minScores, setMinScores] = useState<Record<number, number | null>>({});
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -157,6 +160,7 @@ function AssignModal({
                         training_id,
                         assigned_by: user?.id,
                         organization_id: employee.organization_id,
+                        min_score: minScores[training_id] ?? null,
                     })));
                 if (addError) throw addError;
             }
@@ -204,13 +208,33 @@ function AssignModal({
                                         : 'border-gray-200 hover:border-gray-300'
                                 }`}
                             >
-                                <div>
+                                <div className="flex-1">
                                     <p className="text-sm font-medium text-gray-900 capitalize">
                                         {t.name || `${t.company_role} Training`}
                                     </p>
                                     <p className="text-xs text-gray-500 mt-0.5">
                                         Created {formatDate(t.created_at)}
                                     </p>
+                                    {selected.includes(t.id) && (
+                                        <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                            <label className="text-xs text-gray-600 font-medium whitespace-nowrap">Min grade:</label>
+                                            <select
+                                                value={minScores[t.id] ?? ''}
+                                                onChange={e => setMinScores(prev => ({
+                                                    ...prev,
+                                                    [t.id]: e.target.value === '' ? null : Number(e.target.value)
+                                                }))}
+                                                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                            >
+                                                <option value="">Completion only</option>
+                                                <option value="60">60 — Pass</option>
+                                                <option value="70">70 — Good</option>
+                                                <option value="80">80 — Proficient</option>
+                                                <option value="90">90 — Excellent</option>
+                                                <option value="100">100 — Perfect</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
                                     selected.includes(t.id)

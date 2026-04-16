@@ -29,11 +29,15 @@ interface Evidence {
     score: number;
     passed: boolean;
     completed_at: string;
+    training_name?: string | null;
+    retakes?: number;
+    minRequired?: number | null;
 }
 
 interface Assignment {
     user_id: string;
     training_id: number;
+    min_score?: number | null;
 }
 
 interface EmployeeProgress {
@@ -155,8 +159,20 @@ function EmpRow({ ep }: { ep: EmployeeProgress }) {
                                 {ep.evidence.map((ev, i) => (
                                     <div key={i} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-4 py-2.5">
                                         <div>
-                                            <p className="text-sm font-medium text-gray-900 capitalize">{ev.company_role} Training</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-sm font-medium text-gray-900 capitalize">
+                                                    {ev.training_name || `${ev.company_role} Training`}
+                                                </p>
+                                                {ev.retakes != null && ev.retakes > 0 && (
+                                                    <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                                                        {ev.retakes} retake{ev.retakes > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-xs text-gray-500">{formatDate(ev.completed_at)}</p>
+                                            {ev.minRequired != null && (
+                                                <p className="text-xs text-gray-400">Min required: {ev.minRequired}/100</p>
+                                            )}
                                         </div>
                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${ev.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             {ev.passed ? <><CheckCircle className="w-3 h-3" />{ev.score}/100</> : <><XCircle className="w-3 h-3" />{ev.score}/100</>}
@@ -190,22 +206,81 @@ export function ProgressDashboardPage() {
         setLoading(true);
         const [{ data: empData }, { data: assignData }, { data: evData }] = await Promise.all([
             supabase.from('profiles').select('id, first_name, last_name, role').eq('organization_id', profile!.organization_id),
-            supabase.from('assignments').select('user_id, training_id').eq('organization_id', profile!.organization_id),
+            supabase.from('assignments').select('user_id, training_id, min_score').eq('organization_id', profile!.organization_id),
             supabase.from('training_evidence').select('user_id, training_id, company_role, score, passed, completed_at').eq('organization_id', profile!.organization_id),
         ]);
 
+        // Fetch all org profiles including admins — an admin can be assigned trainings by another admin
+        // so we include everyone in the org with no role filter and no self-exclusion
         const employees = (empData ?? []) as Employee[];
         const assignments = (assignData ?? []) as Assignment[];
-        const evidence = (evData ?? []) as Evidence[];
+        const rawEvidence = (evData ?? []) as Evidence[];
+
+        // Fetch training names for all training_ids in evidence
+        const allTrainingIds = [...new Set(rawEvidence.map(e => e.training_id).filter(Boolean))];
+        let trainingNameMap: Record<number, string> = {};
+        if (allTrainingIds.length > 0) {
+            const { data: trainingData } = await supabase
+                .from('trainings')
+                .select('id, name, company_role')
+                .in('id', allTrainingIds);
+            if (trainingData) {
+                trainingNameMap = Object.fromEntries(
+                    trainingData.map(t => [t.id, t.name || ''])
+                );
+            }
+        }
+
+        // Attach training names to evidence
+        const evidence = rawEvidence.map(e => ({
+            ...e,
+            training_name: trainingNameMap[e.training_id] || null,
+        }));
 
         const result: EmployeeProgress[] = employees.map(emp => {
             const empAsgn = assignments.filter(a => a.user_id === emp.id);
-            const empEv   = evidence.filter(e => e.user_id === emp.id);
-            const passed  = empEv.filter(e => e.passed).length;
-            const scores  = empEv.map(e => e.score);
+            const assignedIds = new Set(empAsgn.map(a => a.training_id));
+
+            // Only include evidence for currently assigned trainings
+            const empEv = evidence.filter(e => e.user_id === emp.id && assignedIds.has(e.training_id));
+
+            // Deduplicate: keep only latest attempt per training
+            const latestByTraining: Record<number, Evidence> = {};
+            empEv.forEach(e => {
+                const existing = latestByTraining[e.training_id];
+                if (!existing || new Date(e.completed_at) > new Date(existing.completed_at)) {
+                    latestByTraining[e.training_id] = e;
+                }
+            });
+            const deduped = Object.values(latestByTraining);
+
+            // Count retakes per training
+            const retakeCount: Record<number, number> = {};
+            empEv.forEach(e => {
+                retakeCount[e.training_id] = (retakeCount[e.training_id] || 0) + 1;
+            });
+
+            const passed = deduped.filter(e => e.passed).length;
+            const scores = deduped.map(e => e.score);
             const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-            const completionRate = empAsgn.length > 0 ? Math.round((empEv.length / empAsgn.length) * 100) : 0;
-            return { employee: emp, assigned: empAsgn.length, completed: empEv.length, passed, avgScore, completionRate, evidence: empEv };
+            // Only count as completed if score meets the min_score requirement
+            const uniqueCompleted = empAsgn.filter(a => {
+                const ev = latestByTraining[a.training_id];
+                if (!ev) return false;
+                const req = a.min_score ?? null;
+                return req !== null ? ev.score >= req : ev.passed;
+            }).length;
+            const completionRate = empAsgn.length > 0
+                ? Math.min(100, Math.round((uniqueCompleted / empAsgn.length) * 100))
+                : 0;
+
+            // Attach retake counts and minRequired to deduped evidence
+            const evidenceWithRetakes = deduped.map(e => {
+                const asgn = empAsgn.find(a => a.training_id === e.training_id);
+                return { ...e, retakes: retakeCount[e.training_id] - 1, minRequired: asgn?.min_score ?? null };
+            });
+
+            return { employee: emp, assigned: empAsgn.length, completed: uniqueCompleted, passed, avgScore, completionRate, evidence: evidenceWithRetakes };
         });
 
         setProgress(result);

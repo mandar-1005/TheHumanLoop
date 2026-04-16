@@ -16,6 +16,7 @@ interface AssignedTraining {
     id: string;
     assigned_at: string;
     due_date: string | null;
+    min_score?: number | null;
     training: {
         id: number;
         name?: string | null;
@@ -51,6 +52,7 @@ type TrainingModule = {
     role: string;
     contents: TrainingContent[];
     createdAt: string;
+    minScore?: number | null;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -259,6 +261,7 @@ export function MyTrainingPage() {
                     id,
                     assigned_at,
                     due_date,
+                    min_score,
                     training:training_id (
                         id, name, company_role, training_json, created_at, status
                     )
@@ -310,12 +313,15 @@ export function MyTrainingPage() {
         if (!t) return;
 
         const contents = parseTrainingJson(t.training_json);
+        // Find min_score from this assignment
+        const minScore = a.min_score ?? null;
         setActiveTraining({
             id: String(t.id),
             name: t.name || '',
             role: t.company_role,
             contents,
             createdAt: formatDate(t.created_at),
+            minScore,
         });
     };
 
@@ -384,7 +390,13 @@ export function MyTrainingPage() {
             .select('training_id, score, passed, completed_at')
             .eq('user_id', user.id);
         setScores((data ?? []) as TrainingScore[]);
-        setCertificate({ role: activeTraining.role, score, passed });
+
+        // Only show certificate if score meets the minimum requirement
+        const minRequired = activeTraining.minScore ?? null;
+        const meetsMin = minRequired !== null ? safeScore >= minRequired : passed;
+        if (meetsMin) {
+            setCertificate({ role: activeTraining.role, score: safeScore, passed });
+        }
         setActiveTraining(null);
     };
 
@@ -527,30 +539,39 @@ export function MyTrainingPage() {
                                                         {score ? `${score.score}/100` : '—'}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        {score ? (
-                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                                score.passed
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                            {score.passed ? 'Passed' : 'Failed'}
-                                                        </span>
-                                                        ) : (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                            Pending
-                                                        </span>
-                                                        )}
+                                                        {(() => {
+                                                            if (!score) return (
+                                                                <div>
+                                                                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>
+                                                                    {a.min_score && <p className="text-xs text-gray-400 mt-1">Min: {a.min_score}/100</p>}
+                                                                </div>
+                                                            );
+                                                            const req = a.min_score ?? null;
+                                                            const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                            return (
+                                                                <div>
+                                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${meetsReq ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {meetsReq ? (req ? `Met ${score.score}/100` : 'Passed') : (req ? `${score.score}/100` : 'Failed')}
+                                                                    </span>
+                                                                    {req && <p className="text-xs text-gray-400 mt-1">Min: {req}/100</p>}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-3">
                                                             <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
                                                                 {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
                                                             </button>
-                                                            {score && (
-                                                                <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
-                                                                    <Award className="w-3 h-3" /> Certificate
-                                                                </button>
-                                                            )}
+                                                            {score && (() => {
+                                                                const req = a.min_score ?? null;
+                                                                const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                                return meetsReq ? (
+                                                                    <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                        <Award className="w-3 h-3" /> Certificate
+                                                                    </button>
+                                                                ) : null;
+                                                            })()}
                                                         </div>
                                                     </td>
                                                 </tr>
