@@ -107,3 +107,95 @@ def update_training_positive_score(training_id: int, delta: int) -> dict | None:
 
     training["positive_score"] = new_score
     return training
+
+def get_next_revision_number(training_id: int) -> int:
+    response = (
+        supabase.table("training_revisions")
+        .select("revision_number")
+        .eq("training_id", training_id)
+        .order("revision_number", desc=True)
+        .limit(1)
+        .execute()
+    )
+    latest = (response.data or [None])[0]
+    if not latest:
+        return 1
+    return int(latest.get("revision_number", 0)) + 1
+
+
+def create_training_revision(
+    training_id: int,
+    prior_training_json: str,
+    critique_text: str,
+    revised_training_json: str,
+    created_by: str,
+) -> dict | None:
+    revision_number = get_next_revision_number(training_id)
+    response = (
+        supabase.table("training_revisions")
+        .insert(
+            {
+                "training_id": training_id,
+                "revision_number": revision_number,
+                "prior_training_json": prior_training_json,
+                "critique_text": critique_text,
+                "revised_training_json": revised_training_json,
+                "created_by": str(created_by),
+                "accepted": False,
+            }
+        )
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def list_training_revisions(training_id: int) -> list[dict]:
+    response = (
+        supabase.table("training_revisions")
+        .select(
+            "training_id, revision_number, critique_text, accepted, created_by, created_at"
+        )
+        .eq("training_id", training_id)
+        .order("revision_number", desc=True)
+        .execute()
+    )
+    return response.data or []
+
+
+def get_training_revision(training_id: int, revision_number: int) -> dict | None:
+    response = (
+        supabase.table("training_revisions")
+        .select("*")
+        .eq("training_id", training_id)
+        .eq("revision_number", revision_number)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def mark_revision_accepted(training_id: int, revision_number: int) -> dict | None:
+    response = (
+        supabase.table("training_revisions")
+        .update({"accepted": True})
+        .eq("training_id", training_id)
+        .eq("revision_number", revision_number)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def apply_revision_to_training(training_id: int, revised_training_json: str) -> dict | None:
+    response = (
+        supabase.table("trainings")
+        .update(
+            {
+                "training_json": revised_training_json,
+                "status": "draft",
+                "rejection_reason": None,
+            }
+        )
+        .eq("id", training_id)
+        .execute()
+    )
+    return (response.data or [None])[0]

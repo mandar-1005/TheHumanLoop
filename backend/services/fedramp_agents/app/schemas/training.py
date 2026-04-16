@@ -20,6 +20,15 @@ ASSESSMENT_FORMATS = (
     "case_study", "evaluation", "open_ended",
 )
 
+class RegenerateTrainingRequest(BaseModel):
+    user_id: UUID
+    critique_text: str = Field(min_length=3, max_length=4000)
+    temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+
+
+class AcceptRevisionRequest(BaseModel):
+    user_id: UUID
+    revision_number: int = Field(ge=1)
 
 class AssessmentQuestion(BaseModel):
     question_id: str
