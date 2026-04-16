@@ -103,6 +103,19 @@ function cloneTrainingContents(contents: TrainingContent[]): TrainingContent[] {
   return JSON.parse(JSON.stringify(contents)) as TrainingContent[];
 }
 
+function formatAssessmentTypeLabel(value?: string | null): string {
+  if (!value) return "Assessment";
+
+  const normalized = value.replace(/_/g, " ").trim();
+  const titleCased = normalized
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+
+  return titleCased === "Flashcard" ? "Flashcards" : titleCased;
+}
+
 const STATUS_MAP: Record<string, TrainingStatus> = {
   draft: "Draft",
   in_review: "In Review",
@@ -409,7 +422,7 @@ function AdaptiveStudyUI({
           }`}
         >
           <FileText className="w-4 h-4" />
-          {content.assessment?.type || "Assessment"}
+          {formatAssessmentTypeLabel(content.assessment?.type)}
         </button>
         <button
           onClick={() => setStudyMode("chat")}
@@ -1391,7 +1404,9 @@ export function TrainingModulesPage() {
                           {row.role}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700">
-                          {row.contents[0]?.assessment?.type ?? "—"}
+                          {formatAssessmentTypeLabel(
+                            row.contents[0]?.assessment?.type,
+                          )}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700">
                           {row.contents.length}
