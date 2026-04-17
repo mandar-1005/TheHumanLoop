@@ -16,6 +16,7 @@ interface AssignedTraining {
     id: string;
     assigned_at: string;
     due_date: string | null;
+    min_score?: number | null;
     training: {
         id: number;
         name?: string | null;
@@ -38,6 +39,7 @@ interface TrainingScore {
     score: number;
     passed: boolean;
     completed_at: string;
+    retake_count?: number;
 }
 
 type TrainingContent = {
@@ -51,6 +53,7 @@ type TrainingModule = {
     role: string;
     contents: TrainingContent[];
     createdAt: string;
+    minScore?: number | null;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -245,7 +248,7 @@ export function MyTrainingPage() {
 
     // The training module currently open for study (null = list view)
     const [activeTraining, setActiveTraining] = useState<TrainingModule | null>(null);
-    const [certificate, setCertificate] = useState<{ role: string; score: number; passed: boolean } | null>(null);
+    const [certificate, setCertificate] = useState<{ role: string; score: number; passed: boolean; completed_at?: string } | null>(null);
 
     useEffect(() => {
         if (!user) return;
@@ -259,6 +262,7 @@ export function MyTrainingPage() {
                     id,
                     assigned_at,
                     due_date,
+                    min_score,
                     training:training_id (
                         id, name, company_role, training_json, created_at, status
                     )
@@ -275,7 +279,7 @@ export function MyTrainingPage() {
 
             const { data: scoreData } = await supabase
                 .from('training_evidence')
-                .select('training_id, score, passed, completed_at')
+                .select('training_id, score, passed, completed_at, retake_count')
                 .eq('user_id', user.id);
 
             setScores((scoreData ?? []) as TrainingScore[]);
@@ -296,6 +300,9 @@ export function MyTrainingPage() {
     const getScore = (trainingId: number) =>
         scores.find(s => s.training_id === trainingId);
 
+    const retakeCountFor = (trainingId: number) =>
+        scores.find(s => s.training_id === trainingId)?.retake_count ?? 0;
+
     const formatDate = (d: string) =>
         new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -310,12 +317,15 @@ export function MyTrainingPage() {
         if (!t) return;
 
         const contents = parseTrainingJson(t.training_json);
+        // Find min_score from this assignment
+        const minScore = a.min_score ?? null;
         setActiveTraining({
             id: String(t.id),
             name: t.name || '',
             role: t.company_role,
             contents,
             createdAt: formatDate(t.created_at),
+            minScore,
         });
     };
 
@@ -346,14 +356,14 @@ export function MyTrainingPage() {
         // Check if a record already exists for this user + training
         const { data: existing } = await supabase
             .from('training_evidence')
-            .select('id')
+            .select('id, retake_count')
             .eq('user_id', user.id)
             .eq('training_id', payload.training_id)
             .maybeSingle();
 
         let saveError;
         if (existing?.id) {
-            // Update existing row
+            // Update existing row — increment retake_count
             const { error } = await supabase
                 .from('training_evidence')
                 .update({
@@ -361,6 +371,7 @@ export function MyTrainingPage() {
                     // passed is generated — not updatable
                     assessment_type: payload.assessment_type,
                     completed_at: payload.completed_at,
+                    retake_count: (existing.retake_count ?? 0) + 1,
                 })
                 .eq('id', existing.id);
             saveError = error;
@@ -381,10 +392,16 @@ export function MyTrainingPage() {
         // Refresh scores
         const { data } = await supabase
             .from('training_evidence')
-            .select('training_id, score, passed, completed_at')
+            .select('training_id, score, passed, completed_at, retake_count')
             .eq('user_id', user.id);
         setScores((data ?? []) as TrainingScore[]);
-        setCertificate({ role: activeTraining.role, score, passed });
+
+        // Only show certificate if score meets the minimum requirement
+        const minRequired = activeTraining.minScore ?? null;
+        const meetsMin = minRequired !== null ? safeScore >= minRequired : passed;
+        if (meetsMin) {
+            setCertificate({ role: activeTraining.role, score: safeScore, passed, completed_at: new Date().toISOString() });
+        }
         setActiveTraining(null);
     };
 
@@ -461,12 +478,22 @@ export function MyTrainingPage() {
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
                                 <p className="text-sm text-gray-600">Completed</p>
-                                <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-1">
+                                    {assignments.filter(a => {
+                                        const s = scores.find(sc => sc.training_id === Number(getTrainingFromAssignment(a)?.id));
+                                        if (!s) return false;
+                                        const req = a.min_score ?? null;
+                                        return req !== null ? s.score >= req : s.passed;
+                                    }).length}
+                                </p>
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
                                 <p className="text-sm text-gray-600">Passed</p>
                                 <p className="text-3xl font-bold text-green-600 mt-1">
-                                    {scores.filter(s => s.passed).length}
+                                    {assignments.filter(a => {
+                                        const s = scores.find(sc => sc.training_id === Number(getTrainingFromAssignment(a)?.id));
+                                        return s?.passed ?? false;
+                                    }).length}
                                 </p>
                             </div>
                         </div>
@@ -498,6 +525,7 @@ export function MyTrainingPage() {
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Retakes</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
                                             <th className="px-6 py-3" />
                                         </tr>
@@ -527,30 +555,45 @@ export function MyTrainingPage() {
                                                         {score ? `${score.score}/100` : '—'}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        {score ? (
-                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                                score.passed
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                            {score.passed ? 'Passed' : 'Failed'}
-                                                        </span>
-                                                        ) : (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                            Pending
-                                                        </span>
-                                                        )}
+                                                        {retakeCountFor(Number(getTrainingFromAssignment(a)?.id)) > 0
+                                                            ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{retakeCountFor(Number(getTrainingFromAssignment(a)?.id))}x</span>
+                                                            : <span className="text-xs text-gray-400">—</span>}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {(() => {
+                                                            if (!score) return (
+                                                                <div>
+                                                                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>
+                                                                    <p className="text-xs text-gray-400 mt-1">{a.min_score ? `Min: ${a.min_score}/100` : 'Completion only'}</p>
+                                                                </div>
+                                                            );
+                                                            const req = a.min_score ?? null;
+                                                            const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                            return (
+                                                                <div>
+                                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${meetsReq ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {meetsReq ? 'Passed' : 'Failed'}
+                                                                    </span>
+                                                                    <p className="text-xs text-gray-400 mt-1">{req ? `Min: ${req}/100` : 'Completion only'}</p>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-3">
                                                             <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
                                                                 {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
                                                             </button>
-                                                            {score && (
-                                                                <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
-                                                                    <Award className="w-3 h-3" /> Certificate
-                                                                </button>
-                                                            )}
+
+                                                            {score && (() => {
+                                                                const req = a.min_score ?? null;
+                                                                const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                                return meetsReq ? (
+                                                                    <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed, completed_at: score.completed_at })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                        <Award className="w-3 h-3" /> Certificate
+                                                                    </button>
+                                                                ) : null;
+                                                            })()}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -588,7 +631,7 @@ export function MyTrainingPage() {
                                 <span className="text-xl font-bold text-green-700">{certificate.score}/100</span>
                                 <span className="text-sm text-green-600">· {certificate.passed ? 'Passed' : 'Completed'}</span>
                             </div>
-                            <p className="text-xs text-gray-400">Issued {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                            <p className="text-xs text-gray-400">Issued {certificate.completed_at ? new Date(certificate.completed_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                             <p className="text-xs text-gray-400 mt-1">FedRAMP Compliant · MARi Platform</p>
                         </div>
                         <div className="p-6 flex gap-3">

@@ -191,11 +191,11 @@ export function Dashboard() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
-    const [newName, setNewName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [creationStep, setCreationStep] = useState(0);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [allSSPs, setAllSSPs] = useState<SSPDocRow[]>([]);
+    const [orgRoles, setOrgRoles] = useState<string[]>([]);
     const [selectedSSPId, setSelectedSSPId] = useState<string>("");
 
     const [profile, setProfile] = useState<{
@@ -241,7 +241,22 @@ export function Dashboard() {
                 .eq("id", user.id)
                 .single()
                 .then(({ data }) => {
-                    if (data) setProfile(data);
+                    if (data) {
+                        setProfile(data);
+                        // Fetch org roles
+                        if (data.organization_id) {
+                            supabase
+                                .from("roles")
+                                .select("name")
+                                .eq("organization_id", data.organization_id)
+                                .order("created_at", { ascending: true })
+                                .then(({ data: rolesData }) => {
+                                    if (rolesData && rolesData.length > 0) {
+                                        setOrgRoles(rolesData.map((r: { name: string }) => r.name));
+                                    }
+                                });
+                        }
+                    }
                 });
 
             supabase
@@ -358,16 +373,8 @@ export function Dashboard() {
 
             const createdId = data?.result?.training_row?.id ?? null;
             setLastCreatedId(createdId);
-            // Save name if provided
-            if (createdId && newName.trim()) {
-                await supabase
-                    .from('trainings')
-                    .update({ name: newName.trim() })
-                    .eq('id', createdId);
-            }
             setShowCreateModal(false);
             setNewRole("");
-            setNewName("");
             setSelectedSSPId("");
             setCreationStep(0);
             setShowSuccessModal(true);
@@ -955,18 +962,6 @@ export function Dashboard() {
                         </h3>
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Training Name <span className="text-gray-400 font-normal">(optional)</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                            placeholder="e.g. Q2 Developer Security Training"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]"
-                            disabled={isCreating}
-                        />
-
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
                             Role
                         </label>
                         <select
@@ -975,10 +970,9 @@ export function Dashboard() {
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm"
                         >
                             <option value="">Select a role...</option>
-                            <option value="developer">Developer</option>
-                            <option value="security-lead">Security Lead</option>
-                            <option value="team-lead">Team Lead</option>
-                            <option value="compliance-officer">Compliance Officer</option>
+                            {orgRoles.map(role => (
+                                <option key={role} value={role.toLowerCase().replace(/\s+/g, '-')}>{role}</option>
+                            ))}
                         </select>
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">
