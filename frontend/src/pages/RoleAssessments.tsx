@@ -35,15 +35,8 @@ interface Assignment {
     user_id: string;
     training_id: number;
     min_score?: number | null;
+    id?: string;
 }
-
-const JOB_ROLES = [
-    'developer',
-    'security-lead',
-    'team-lead',
-    'compliance-officer',
-    'employee',
-];
 
 // ─── Sidebar ────────────────────────────────────────────────────────────────
 
@@ -114,19 +107,21 @@ function AssignModal({
                          employee,
                          trainings,
                          existingAssignments,
+                         existingMinScores = {},
                          onClose,
                          onSaved,
                      }: {
     employee: Employee;
     trainings: Training[];
     existingAssignments: number[];
+    existingMinScores?: Record<number, number | null>;
     onClose: () => void;
     onSaved: () => void;
 }) {
     const { user } = useAuth();
     const [selected, setSelected] = useState<number[]>(existingAssignments);
     // per-training min_score: null = completion only, number = minimum grade required
-    const [minScores, setMinScores] = useState<Record<number, number | null>>({});
+    const [minScores, setMinScores] = useState<Record<number, number | null>>(existingMinScores);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -163,6 +158,21 @@ function AssignModal({
                         min_score: minScores[training_id] ?? null,
                     })));
                 if (addError) throw addError;
+            }
+
+            // Update min_score for existing assignments that are still selected
+            const toUpdate = selected.filter(id => existingAssignments.includes(id));
+            for (const training_id of toUpdate) {
+                const newMin = minScores[training_id] ?? null;
+                const oldMin = existingMinScores[training_id] ?? null;
+                if (newMin !== oldMin) {
+                    const { error: updateError } = await supabase
+                        .from('assignments')
+                        .update({ min_score: newMin })
+                        .eq('user_id', employee.id)
+                        .eq('training_id', training_id);
+                    if (updateError) throw updateError;
+                }
             }
 
             onSaved();
@@ -286,9 +296,11 @@ function AssignModal({
 function RoleDropdown({
                           employee,
                           onRoleChanged,
+                          orgRoles = ['employee'],
                       }: {
     employee: Employee;
     onRoleChanged: (id: string, newRole: string) => void;
+    orgRoles?: string[];
 }) {
     const [open, setOpen] = useState(false);
     const [pendingRole, setPendingRole] = useState<string | null>(null);
@@ -304,7 +316,7 @@ function RoleDropdown({
     const handleOpen = () => {
         if (buttonRef.current) {
             const rect = buttonRef.current.getBoundingClientRect();
-            const dropdownHeight = JOB_ROLES.length * 36 + 8; // approx height
+            const dropdownHeight = orgRoles.length * 36 + 8; // approx height
             const spaceBelow = window.innerHeight - rect.bottom;
             const openUpward = spaceBelow < dropdownHeight;
             setDropdownStyle({
@@ -387,7 +399,7 @@ function RoleDropdown({
                             style={dropdownStyle}
                             className="bg-white border border-gray-200 rounded-lg shadow-lg py-1"
                         >
-                            {JOB_ROLES.map(role => (
+                            {orgRoles.map(role => (
                                 <button
                                     key={role}
                                     onClick={() => handleSelect(role)}
@@ -454,6 +466,7 @@ export function RolesAssessmentsPage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [trainings, setTrainings] = useState<Training[]>([]);
     const [assignments, setAssignments] = useState<Assignment[]>([]);
+    const [orgRoles, setOrgRoles] = useState<string[]>(['employee']);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [assignTarget, setAssignTarget] = useState<Employee | null>(null);
@@ -499,11 +512,20 @@ export function RolesAssessmentsPage() {
             .eq('company_id', profile!.organization_id)
             .order('created_at', { ascending: false });
 
+        const { data: rolesData } = await supabase
+            .from('roles')
+            .select('name')
+            .eq('organization_id', profile!.organization_id)
+            .order('created_at', { ascending: true });
+        if (rolesData && rolesData.length > 0) {
+            setOrgRoles(['employee', ...rolesData.map(r => r.name)]);
+        }
+
         setTrainings((trainingData ?? []) as Training[]);
 
         const { data: assignData } = await supabase
             .from('assignments')
-            .select('user_id, training_id')
+            .select('id, user_id, training_id, min_score')
             .eq('organization_id', profile!.organization_id);
 
         setAssignments((assignData ?? []) as Assignment[]);
@@ -519,6 +541,11 @@ export function RolesAssessmentsPage() {
 
     const getExistingAssignments = (userId: string) =>
         assignments.filter(a => a.user_id === userId).map(a => a.training_id);
+
+    const getExistingMinScores = (userId: string): Record<number, number | null> =>
+        Object.fromEntries(
+            assignments.filter(a => a.user_id === userId).map(a => [a.training_id, a.min_score ?? null])
+        );
 
     const filtered = employees.filter(e => {
         const name = `${e.first_name} ${e.last_name}`.toLowerCase();
@@ -650,6 +677,7 @@ export function RolesAssessmentsPage() {
                                                     <RoleDropdown
                                                         employee={emp}
                                                         onRoleChanged={handleRoleChanged}
+                                                        orgRoles={orgRoles}
                                                     />
                                                 </td>
                                                 <td className="px-6 py-4">
@@ -694,6 +722,7 @@ export function RolesAssessmentsPage() {
                     employee={assignTarget}
                     trainings={trainings}
                     existingAssignments={getExistingAssignments(assignTarget.id)}
+                    existingMinScores={getExistingMinScores(assignTarget.id)}
                     onClose={() => setAssignTarget(null)}
                     onSaved={loadAll}
                 />

@@ -294,7 +294,7 @@ export function MyAnalyticsPage() {
                                     {evidence.map((e, i) => (
                                         <tr key={i} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">
-                                                {e.company_role} Training
+                                                {trainingTitle(e)}
                                                 {e.assessment_type && <span className="ml-2 text-xs text-gray-400 font-normal">({e.assessment_type})</span>}
                                             </td>
                                             <td className="px-6 py-4">
@@ -306,15 +306,17 @@ export function MyAnalyticsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${e.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {e.passed ? <><CheckCircle className="w-3 h-3" /> Passed</> : <><XCircle className="w-3 h-3" /> Failed</>}
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${meetsMin(e) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {meetsMin(e) ? <><CheckCircle className="w-3 h-3" /> Passed</> : <><XCircle className="w-3 h-3" /> Failed</>}
                                                     </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">{formatDate(e.completed_at)}</td>
                                             <td className="px-6 py-4">
-                                                <button onClick={() => setSelectedCert(e)} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
-                                                    <Award className="w-3 h-3" /> Certificate
-                                                </button>
+                                                {meetsMin(e) && (
+                                                    <button onClick={() => setSelectedCert(e)} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                        <Award className="w-3 h-3" /> Certificate
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}

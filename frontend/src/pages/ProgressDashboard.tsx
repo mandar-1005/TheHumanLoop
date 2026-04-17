@@ -31,6 +31,7 @@ interface Evidence {
     completed_at: string;
     training_name?: string | null;
     retakes?: number;
+    retake_count?: number;
     minRequired?: number | null;
 }
 
@@ -48,6 +49,7 @@ interface EmployeeProgress {
     avgScore: number | null;
     completionRate: number;
     evidence: Evidence[];
+    totalRetakes: number;
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -129,6 +131,11 @@ function EmpRow({ ep }: { ep: EmployeeProgress }) {
                     </div>
                 </td>
                 <td className="px-6 py-4">
+                    {ep.totalRetakes > 0
+                        ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{ep.totalRetakes}x</span>
+                        : <span className="text-xs text-gray-400">—</span>}
+                </td>
+                <td className="px-6 py-4">
                     {ep.avgScore !== null
                         ? <span className={`text-sm font-semibold ${ep.avgScore >= 70 ? 'text-green-600' : 'text-red-500'}`}>{ep.avgScore}/100</span>
                         : <span className="text-sm text-gray-400">—</span>}
@@ -151,7 +158,7 @@ function EmpRow({ ep }: { ep: EmployeeProgress }) {
             </tr>
             {open && (
                 <tr>
-                    <td colSpan={7} className="px-6 pb-4 bg-gray-50 border-b border-gray-200">
+                    <td colSpan={8} className="px-6 pb-4 bg-gray-50 border-b border-gray-200">
                         {ep.evidence.length === 0 ? (
                             <p className="text-sm text-gray-500 py-3">No assessments completed yet.</p>
                         ) : (
@@ -207,7 +214,7 @@ export function ProgressDashboardPage() {
         const [{ data: empData }, { data: assignData }, { data: evData }] = await Promise.all([
             supabase.from('profiles').select('id, first_name, last_name, role').eq('organization_id', profile!.organization_id),
             supabase.from('assignments').select('user_id, training_id, min_score').eq('organization_id', profile!.organization_id),
-            supabase.from('training_evidence').select('user_id, training_id, company_role, score, passed, completed_at').eq('organization_id', profile!.organization_id),
+            supabase.from('training_evidence').select('user_id, training_id, company_role, score, passed, completed_at, retake_count').eq('organization_id', profile!.organization_id),
         ]);
 
         // Fetch all org profiles including admins — an admin can be assigned trainings by another admin
@@ -254,10 +261,10 @@ export function ProgressDashboardPage() {
             });
             const deduped = Object.values(latestByTraining);
 
-            // Count retakes per training
+            // Use retake_count from DB (each row tracks its own retake count)
             const retakeCount: Record<number, number> = {};
             empEv.forEach(e => {
-                retakeCount[e.training_id] = (retakeCount[e.training_id] || 0) + 1;
+                retakeCount[e.training_id] = e.retake_count ?? 0;
             });
 
             const passed = deduped.filter(e => e.passed).length;
@@ -277,10 +284,11 @@ export function ProgressDashboardPage() {
             // Attach retake counts and minRequired to deduped evidence
             const evidenceWithRetakes = deduped.map(e => {
                 const asgn = empAsgn.find(a => a.training_id === e.training_id);
-                return { ...e, retakes: retakeCount[e.training_id] - 1, minRequired: asgn?.min_score ?? null };
+                return { ...e, retakes: retakeCount[e.training_id] ?? 0, minRequired: asgn?.min_score ?? null };
             });
 
-            return { employee: emp, assigned: empAsgn.length, completed: uniqueCompleted, passed, avgScore, completionRate, evidence: evidenceWithRetakes };
+            const totalRetakes = Object.values(retakeCount).reduce((sum, c) => sum + c, 0);
+            return { employee: emp, assigned: empAsgn.length, completed: uniqueCompleted, passed, avgScore, completionRate, evidence: evidenceWithRetakes, totalRetakes };
         });
 
         setProgress(result);
@@ -432,6 +440,7 @@ export function ProgressDashboardPage() {
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completed</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Completion</th>
+                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Retakes</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Avg Score</th>
                                 <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
                                 <th className="w-8 px-6 py-3" />
@@ -439,13 +448,13 @@ export function ProgressDashboardPage() {
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                             {loading && (
-                                <tr><td colSpan={7} className="px-6 py-12 text-center">
+                                <tr><td colSpan={8} className="px-6 py-12 text-center">
                                     <Loader2 className="w-6 h-6 animate-spin text-gray-400 mx-auto mb-2" />
                                     <p className="text-sm text-gray-500">Loading data...</p>
                                 </td></tr>
                             )}
                             {!loading && filtered.length === 0 && (
-                                <tr><td colSpan={7} className="px-6 py-12 text-center">
+                                <tr><td colSpan={8} className="px-6 py-12 text-center">
                                     <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                                     <p className="text-sm text-gray-500">No employees found</p>
                                 </td></tr>

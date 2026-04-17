@@ -674,7 +674,6 @@ function MultipleChoiceAssessment({ questions, onComplete }: { questions: Questi
     const answeredCount = Object.keys(scores).length;
     const allViewed = viewed.size >= questions.length;
     const isLastQuestion = index === questions.length - 1;
-    const allAnswered = answeredCount === questions.length;
     const calcAvg = () => Math.round(Array.from({ length: questions.length }, (_, i) => scores[i] ?? 0).reduce((a, b) => a + b, 0) / questions.length);
 
     const reset = () => { setAnswer(''); setSubmitted(false); setStatus(null); setFeedback(''); };
