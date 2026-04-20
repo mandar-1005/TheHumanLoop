@@ -124,7 +124,12 @@ export function LoginPage() {
                 return;
             }
 
-            // Redirect based on role
+            const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+            if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+                navigate('/mfa-verify');
+                return;
+            }
+
             const { data: profile } = await supabase
                 .from('profiles')
                 .select('role')

@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { session, loading } = useAuth();
+    const { session, loading, aal } = useAuth();
 
     if (loading) {
         return (
@@ -17,6 +17,10 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
     if (!session) {
         return <Navigate to="/login" replace />;
+    }
+
+    if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        return <Navigate to="/mfa-verify" replace />;
     }
 
     return <>{children}</>;

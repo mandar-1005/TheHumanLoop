@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import type { Session, User, AuthenticatorAssuranceLevels } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 
 interface Profile {
@@ -9,6 +9,11 @@ interface Profile {
     organization_id: string;
 }
 
+interface AALInfo {
+    currentLevel: AuthenticatorAssuranceLevels;
+    nextLevel: AuthenticatorAssuranceLevels;
+}
+
 interface AuthContextType {
     session: Session | null;
     user: User | null;
@@ -16,6 +21,8 @@ interface AuthContextType {
     role: string | null;
     isAdmin: boolean;
     loading: boolean;
+    aal: AALInfo | null;
+    refreshAAL: () => Promise<void>;
     signOut: () => Promise<void>;
 }
 
@@ -26,6 +33,8 @@ const AuthContext = createContext<AuthContextType>({
     role: null,
     isAdmin: false,
     loading: true,
+    aal: null,
+    refreshAAL: async () => {},
     signOut: async () => {},
 });
 
@@ -33,6 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
+    const [aal, setAAL] = useState<AALInfo | null>(null);
 
     const fetchProfile = async (userId: string) => {
         const { data } = await supabase
@@ -43,19 +53,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data) setProfile(data);
     };
 
+    const refreshAAL = useCallback(async () => {
+        const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (!error && data) {
+            setAAL({ currentLevel: data.currentLevel, nextLevel: data.nextLevel });
+        } else {
+            setAAL(null);
+        }
+    }, []);
+
     useEffect(() => {
         supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSession(session);
-            if (session?.user) await fetchProfile(session.user.id);
+            if (session?.user) {
+                await fetchProfile(session.user.id);
+                await refreshAAL();
+            }
             setLoading(false);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
             setSession(session);
             if (session?.user) {
                 fetchProfile(session.user.id);
+                await refreshAAL();
             } else {
                 setProfile(null);
+                setAAL(null);
             }
         });
 
@@ -65,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signOut = async () => {
         await supabase.auth.signOut();
         setProfile(null);
+        setAAL(null);
     };
 
     const role = profile?.role ?? null;
@@ -78,6 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role,
             isAdmin,
             loading,
+            aal,
+            refreshAAL,
             signOut,
         }}>
             {children}

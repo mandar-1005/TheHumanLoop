@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
     LayoutDashboard, BookOpen, FileText, Users,
     BarChart3, Settings, Shield, LogOut,
     User, Lock, CheckCircle2, AlertCircle,
-    Loader2, Save, Eye, EyeOff,
+    Loader2, Save, Eye, EyeOff, Smartphone,
+    ShieldCheck, ShieldOff, Copy, Check,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -135,8 +136,16 @@ const BASE_INPUT = 'w-full px-3.5 py-2.5 border rounded-lg text-sm focus:outline
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
+type MfaEnrollState = 'idle' | 'enrolling' | 'verifying' | 'unenrolling';
+
+interface MfaFactor {
+    id: string;
+    friendlyName: string | null;
+    status: string;
+}
+
 export function SettingsPage() {
-    const { user, profile: authProfile, isAdmin } = useAuth();
+    const { user, profile: authProfile, isAdmin, refreshAAL } = useAuth();
     // const navigate = useNavigate();
 
     // ── Profile section ──
@@ -163,6 +172,132 @@ export function SettingsPage() {
     const [showCurrent, setShowCurrent] = useState(false);
     const [showNew, setShowNew] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
+
+    // ── MFA section ──
+    const [mfaState, setMfaState] = useState<MfaEnrollState>('idle');
+    const [mfaFactor, setMfaFactor] = useState<MfaFactor | null>(null);
+    const [mfaLoading, setMfaLoading] = useState(true);
+    const [mfaQR, setMfaQR] = useState('');
+    const [mfaSecret, setMfaSecret] = useState('');
+    const [mfaNewFactorId, setMfaNewFactorId] = useState('');
+    const [mfaVerifyCode, setMfaVerifyCode] = useState('');
+    const [mfaError, setMfaError] = useState<string | null>(null);
+    const [mfaSuccess, setMfaSuccess] = useState<string | null>(null);
+    const [secretCopied, setSecretCopied] = useState(false);
+    const [showUnenrollConfirm, setShowUnenrollConfirm] = useState(false);
+
+    const fetchMfaFactors = useCallback(async () => {
+        setMfaLoading(true);
+        const { data, error } = await supabase.auth.mfa.listFactors();
+        if (!error && data) {
+            const verified = data.totp.find(f => f.status === 'verified');
+            if (verified) {
+                setMfaFactor({
+                    id: verified.id,
+                    friendlyName: verified.friendly_name ?? null,
+                    status: verified.status,
+                });
+            } else {
+                setMfaFactor(null);
+            }
+        }
+        setMfaLoading(false);
+    }, []);
+
+    useEffect(() => {
+        fetchMfaFactors();
+    }, [fetchMfaFactors]);
+
+    const handleMfaEnrollStart = async () => {
+        setMfaError(null);
+        setMfaSuccess(null);
+        setMfaState('enrolling');
+
+        const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' });
+        if (error) {
+            setMfaError(error.message);
+            setMfaState('idle');
+            return;
+        }
+
+        setMfaNewFactorId(data.id);
+        setMfaQR(data.totp.qr_code);
+        setMfaSecret(data.totp.secret);
+    };
+
+    const handleMfaVerify = async () => {
+        if (!mfaVerifyCode.trim() || !mfaNewFactorId) return;
+
+        setMfaError(null);
+        setMfaState('verifying');
+
+        const { data: challengeData, error: challengeError } =
+            await supabase.auth.mfa.challenge({ factorId: mfaNewFactorId });
+
+        if (challengeError) {
+            setMfaError(challengeError.message);
+            setMfaState('enrolling');
+            return;
+        }
+
+        const { error: verifyError } = await supabase.auth.mfa.verify({
+            factorId: mfaNewFactorId,
+            challengeId: challengeData.id,
+            code: mfaVerifyCode.trim(),
+        });
+
+        if (verifyError) {
+            setMfaError('Invalid code. Please check your authenticator app and try again.');
+            setMfaVerifyCode('');
+            setMfaState('enrolling');
+            return;
+        }
+
+        await refreshAAL();
+        await fetchMfaFactors();
+        setMfaState('idle');
+        setMfaQR('');
+        setMfaSecret('');
+        setMfaNewFactorId('');
+        setMfaVerifyCode('');
+        setMfaSuccess('Two-factor authentication has been enabled.');
+        setTimeout(() => setMfaSuccess(null), 4000);
+    };
+
+    const handleMfaUnenroll = async () => {
+        if (!mfaFactor) return;
+
+        setMfaError(null);
+        setMfaState('unenrolling');
+
+        const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactor.id });
+        if (error) {
+            setMfaError(error.message);
+            setMfaState('idle');
+            setShowUnenrollConfirm(false);
+            return;
+        }
+
+        await supabase.auth.refreshSession();
+        await refreshAAL();
+        await fetchMfaFactors();
+        setMfaState('idle');
+        setShowUnenrollConfirm(false);
+        setMfaSuccess('Two-factor authentication has been disabled.');
+        setTimeout(() => setMfaSuccess(null), 4000);
+    };
+
+    const handleMfaEnrollCancel = async () => {
+        if (mfaNewFactorId) {
+            await supabase.auth.mfa.unenroll({ factorId: mfaNewFactorId });
+        }
+        setMfaState('idle');
+        setMfaQR('');
+        setMfaSecret('');
+        setMfaNewFactorId('');
+        setMfaVerifyCode('');
+        setMfaError(null);
+    };
 
     // Hydrate form from auth profile
     useEffect(() => {
@@ -626,6 +761,223 @@ export function SettingsPage() {
                                     {passwordSave === 'saving' ? 'Updating...' : 'Update Password'}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* ── MFA card ── */}
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-200 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                                <Smartphone className="w-5 h-5 text-[#1e3a5f]" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-base font-semibold text-gray-900">Two-Factor Authentication</h3>
+                                <p className="text-xs text-gray-500">Secure your account with an authenticator app</p>
+                            </div>
+                            {!mfaLoading && mfaFactor && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    Enabled
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="p-6 space-y-5">
+                            {mfaLoading ? (
+                                <div className="flex items-center justify-center py-4">
+                                    <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                                </div>
+                            ) : mfaFactor && mfaState !== 'enrolling' ? (
+                                <>
+                                    <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg p-4">
+                                        <ShieldCheck className="w-5 h-5 text-green-600 flex-shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-medium text-green-800">
+                                                Two-factor authentication is active
+                                            </p>
+                                            <p className="text-xs text-green-600 mt-0.5">
+                                                Your account is protected with an authenticator app.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {mfaError && (
+                                        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                            {mfaError}
+                                        </div>
+                                    )}
+
+                                    {mfaSuccess && (
+                                        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                                            {mfaSuccess}
+                                        </div>
+                                    )}
+
+                                    {showUnenrollConfirm ? (
+                                        <div className="border border-red-200 rounded-lg p-4 space-y-3">
+                                            <p className="text-sm text-gray-700">
+                                                Are you sure you want to disable two-factor authentication? This will make your account less secure.
+                                            </p>
+                                            <div className="flex items-center gap-3">
+                                                <button
+                                                    onClick={handleMfaUnenroll}
+                                                    disabled={mfaState === 'unenrolling'}
+                                                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                                >
+                                                    {mfaState === 'unenrolling' ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <ShieldOff className="w-4 h-4" />
+                                                    )}
+                                                    {mfaState === 'unenrolling' ? 'Disabling...' : 'Yes, Disable'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowUnenrollConfirm(false)}
+                                                    disabled={mfaState === 'unenrolling'}
+                                                    className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-end pt-1">
+                                            <button
+                                                onClick={() => setShowUnenrollConfirm(true)}
+                                                className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
+                                            >
+                                                <ShieldOff className="w-4 h-4" />
+                                                Disable Two-Factor
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            ) : mfaState === 'enrolling' || mfaState === 'verifying' ? (
+                                <>
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-gray-700">
+                                            Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code to verify.
+                                        </p>
+
+                                        <div className="flex flex-col items-center gap-4 py-2">
+                                            {mfaQR && (
+                                                <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                                                    <img src={mfaQR} alt="QR Code for authenticator app" className="w-48 h-48" />
+                                                </div>
+                                            )}
+
+                                            <div className="w-full">
+                                                <p className="text-xs text-gray-500 mb-1.5 text-center">
+                                                    Can't scan? Enter this key manually:
+                                                </p>
+                                                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                                    <code className="flex-1 text-xs font-mono text-gray-700 break-all select-all">
+                                                        {mfaSecret}
+                                                    </code>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(mfaSecret);
+                                                            setSecretCopied(true);
+                                                            setTimeout(() => setSecretCopied(false), 2000);
+                                                        }}
+                                                        className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                                                        title="Copy to clipboard"
+                                                    >
+                                                        {secretCopied ? (
+                                                            <Check className="w-4 h-4 text-green-500" />
+                                                        ) : (
+                                                            <Copy className="w-4 h-4" />
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                                                Verification Code
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={mfaVerifyCode}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                                                    setMfaVerifyCode(val);
+                                                    setMfaError(null);
+                                                }}
+                                                inputMode="numeric"
+                                                maxLength={6}
+                                                autoComplete="one-time-code"
+                                                placeholder="000000"
+                                                disabled={mfaState === 'verifying'}
+                                                className={`${BASE_INPUT} text-center text-lg font-mono tracking-[0.3em] border-gray-300 focus:ring-blue-500/20 focus:border-blue-500`}
+                                            />
+                                        </div>
+
+                                        {mfaError && (
+                                            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                {mfaError}
+                                            </div>
+                                        )}
+
+                                        <div className="flex items-center justify-end gap-3 pt-1">
+                                            <button
+                                                onClick={handleMfaEnrollCancel}
+                                                disabled={mfaState === 'verifying'}
+                                                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleMfaVerify}
+                                                disabled={mfaState === 'verifying' || mfaVerifyCode.length !== 6}
+                                                className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                                            >
+                                                {mfaState === 'verifying' ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <ShieldCheck className="w-4 h-4" />
+                                                )}
+                                                {mfaState === 'verifying' ? 'Verifying...' : 'Verify & Enable'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm text-gray-600">
+                                        Add an extra layer of security to your account. When enabled, you'll need to enter a code from your authenticator app each time you sign in.
+                                    </p>
+
+                                    {mfaError && (
+                                        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                            {mfaError}
+                                        </div>
+                                    )}
+
+                                    {mfaSuccess && (
+                                        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                                            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                                            {mfaSuccess}
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-end pt-1">
+                                        <button
+                                            onClick={handleMfaEnrollStart}
+                                            className="flex items-center gap-2 px-5 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] transition-colors"
+                                        >
+                                            <Smartphone className="w-4 h-4" />
+                                            Set Up Two-Factor
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 

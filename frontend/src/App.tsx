@@ -11,6 +11,7 @@ import { SSPDocumentsPage } from './pages/SSPDocuments';
 import { MyTrainingPage } from './pages/MyTraining';
 import { RolesAssessmentsPage } from './pages/RoleAssessments';
 import { SettingsPage } from './pages/Settings';
+import { MfaVerifyPage } from './pages/MfaVerify';
 
 function App() {
     return (
@@ -22,6 +23,7 @@ function App() {
                     {/* Public */}
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/mfa-verify" element={<MfaVerifyPage />} />
 
                     {/* Admin-only */}
                     <Route path="/dashboard" element={
