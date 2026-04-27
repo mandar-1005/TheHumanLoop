@@ -31,6 +31,26 @@ export function LoginPage() {
     const [validationState, setValidationState] = useState<ValidationState>({});
     const [isLoading, setIsLoading] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [showPolicy, setShowPolicy] = useState<'privacy' | 'terms' | null>(null);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
+    const [resetEmail, setResetEmail] = useState('');
+    const [resetStatus, setResetStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+    const [resetError, setResetError] = useState('');
+
+    const handleForgotPassword = async () => {
+        if (!resetEmail.trim()) { setResetError('Please enter your email address.'); return; }
+        setResetStatus('sending');
+        setResetError('');
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+            redirectTo: `${window.location.origin}/settings`,
+        });
+        if (error) {
+            setResetStatus('error');
+            setResetError(error.message);
+        } else {
+            setResetStatus('sent');
+        }
+    };
 
     const { isAdmin } = useAuth();
 
@@ -266,9 +286,13 @@ export function LoginPage() {
                                     <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                                         Password
                                     </label>
-                                    <a href="#" className="text-xs text-[#1e3a5f] hover:text-[#152d4a] font-medium hover:underline">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowForgotPassword(true); setResetEmail(formData.email); setResetStatus('idle'); setResetError(''); }}
+                                        className="text-xs text-[#1e3a5f] hover:text-[#152d4a] font-medium hover:underline"
+                                    >
                                         Forgot password?
-                                    </a>
+                                    </button>
                                 </div>
                                 <div className="relative">
                                     <input
@@ -357,12 +381,113 @@ export function LoginPage() {
                     <div className="mt-8 text-center text-xs text-gray-500">
                         <p>© 2026 MARi Secure Training Portal. FedRAMP Compliant.</p>
                         <div className="mt-2 space-x-4">
-                            <a href="#" className="hover:text-gray-700 hover:underline">Privacy Policy</a>
-                            <a href="#" className="hover:text-gray-700 hover:underline">Terms of Service</a>
+                            <button onClick={() => setShowPolicy('privacy')} className="hover:text-gray-700 hover:underline">Privacy Policy</button>
+                            <button onClick={() => setShowPolicy('terms')} className="hover:text-gray-700 hover:underline">Terms of Service</button>
                         </div>
                     </div>
                 </div>
             </div>
+            {/* Policy Modal */}
+            {showPolicy && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg bg-white rounded-xl shadow-xl p-6 max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                {showPolicy === 'privacy' ? 'Privacy Policy' : 'Terms of Service'}
+                            </h3>
+                            <button onClick={() => setShowPolicy(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+                        </div>
+                        <div className="overflow-y-auto text-sm text-gray-600 space-y-3 flex-1">
+                            {showPolicy === 'privacy' ? (
+                                <>
+                                    <p><strong>Last Updated:</strong> January 1, 2026</p>
+                                    <p>MARi Secure Training Platform ("Platform") is committed to protecting your privacy and ensuring the security of your personal information in compliance with FedRAMP requirements.</p>
+                                    <p><strong>Data Collection:</strong> We collect only the information necessary to provide secure training services, including your name, email address, organizational role, and training completion records.</p>
+                                    <p><strong>Data Usage:</strong> Your data is used exclusively for training delivery, progress tracking, compliance reporting, and platform improvement. We do not sell or share your data with third parties.</p>
+                                    <p><strong>Data Security:</strong> All data is encrypted in transit and at rest. Access is controlled through role-based permissions in accordance with FedRAMP security standards.</p>
+                                    <p><strong>Data Retention:</strong> Training records are retained for the duration required by your organization's compliance obligations. You may request data deletion by contacting your organization administrator.</p>
+                                    <p><strong>Contact:</strong> For privacy inquiries, contact your organization's security administrator or email privacy@mari-platform.com.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <p><strong>Last Updated:</strong> January 1, 2026</p>
+                                    <p>By accessing and using the MARi Secure Training Platform, you agree to be bound by these Terms of Service.</p>
+                                    <p><strong>Acceptable Use:</strong> You agree to use the Platform solely for authorized security training and compliance activities. You will not attempt to circumvent security controls, share credentials, or misuse training content.</p>
+                                    <p><strong>Account Responsibility:</strong> You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
+                                    <p><strong>Training Content:</strong> All training materials are proprietary and protected by copyright. You may not reproduce, distribute, or modify training content without authorization.</p>
+                                    <p><strong>Compliance:</strong> Users must comply with all applicable federal regulations, organizational policies, and FedRAMP requirements while using the Platform.</p>
+                                    <p><strong>Termination:</strong> Access may be suspended or terminated for violations of these terms or at the discretion of your organization administrator.</p>
+                                </>
+                            )}
+                        </div>
+                        <button onClick={() => setShowPolicy(null)} className="w-full mt-4 px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a]">Close</button>
+                    </div>
+                </div>
+            )}
+
+            {/* Forgot Password Modal */}
+            {showForgotPassword && (
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+                    <div className="w-full max-w-sm bg-white rounded-xl shadow-xl p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <Mail className="w-5 h-5 text-[#1e3a5f]" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900">Reset Password</h3>
+                                <p className="text-xs text-gray-500">We'll send you a reset link</p>
+                            </div>
+                        </div>
+
+                        {resetStatus === 'sent' ? (
+                            <div className="text-center py-4">
+                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                    <Mail className="w-6 h-6 text-green-600" />
+                                </div>
+                                <p className="text-sm font-medium text-gray-900 mb-1">Check your email</p>
+                                <p className="text-xs text-gray-500 mb-4">We've sent a password reset link to <strong>{resetEmail}</strong></p>
+                                <button
+                                    onClick={() => setShowForgotPassword(false)}
+                                    className="w-full px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a]"
+                                >
+                                    Back to Login
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <input
+                                    type="email"
+                                    value={resetEmail}
+                                    onChange={e => { setResetEmail(e.target.value); setResetError(''); }}
+                                    placeholder="Enter your email address"
+                                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[#1e3a5f] mb-3"
+                                />
+                                {resetError && (
+                                    <div className="flex items-center gap-2 text-red-600 text-xs mb-3">
+                                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                        {resetError}
+                                    </div>
+                                )}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setShowForgotPassword(false)}
+                                        className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleForgotPassword}
+                                        disabled={resetStatus === 'sending'}
+                                        className="flex-1 px-4 py-2.5 bg-[#1e3a5f] text-white text-sm font-medium rounded-lg hover:bg-[#152d4a] disabled:opacity-50"
+                                    >
+                                        {resetStatus === 'sending' ? 'Sending...' : 'Send Reset Link'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

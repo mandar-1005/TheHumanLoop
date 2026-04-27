@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import {
     ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     AlertCircle, XCircle, RefreshCw, Sparkles, FileText,
@@ -141,22 +141,21 @@ async function gradeAnswer(
     const data = await res.json();
     console.log('[gradeAnswer] response:', data);
     const detail = data.details?.[0] ?? {};
-
-    // Normalize score: API may return 0-1 float or 0-100 integer
     const rawScore: number = detail.score ?? 0;
     const normalizedScore = rawScore <= 1 ? rawScore : rawScore / 100;
-
+    const normalizedCriteria = (detail.criterion_scores ?? []).map(
+        (c: { criterion: string; weight: number; score: number; rationale: string }) => ({
+            ...c,
+            score: c.score > 1 ? c.score / 100 : c.score,
+        }),
+    );
     return {
-        score: normalizedScore,   // always 0-1 internally; multiply by 100 when saving
+        score: normalizedScore,
         feedback: detail.feedback ?? '',
         is_correct: detail.is_correct ?? false,
         strengths: detail.strengths,
         improvements: detail.improvements,
-        // Normalize criterion scores the same way — API may return 0-100 integers
-        criterion_scores: detail.criterion_scores?.map((c: { criterion: string; weight: number; score: number; rationale: string }) => ({
-            ...c,
-            score: c.score <= 1 ? c.score : c.score / 100,
-        })),
+        criterion_scores: normalizedCriteria,
     };
 }
 
@@ -754,6 +753,40 @@ function MultipleChoiceAssessment({ questions, onComplete }: { questions: Questi
         </>
     );
 }
+
+// ─── Grading Progress Bar ────────────────────────────────────────────────────
+
+function GradingProgressBar({ active }: { active: boolean }) {
+    const [seconds, setSeconds] = useState(0);
+
+    useEffect(() => {
+        if (!active) { setSeconds(0); return; }
+        setSeconds(0);
+        const id = setInterval(() => setSeconds(s => s + 1), 1000);
+        return () => clearInterval(id);
+    }, [active]);
+
+    if (!active) return null;
+
+    const progress = Math.min(92, 10 + seconds * 4);
+
+    return (
+        <div className="space-y-2">
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                    className="h-full bg-gradient-to-r from-[#1e3a5f] to-blue-500 rounded-full animate-pulse"
+                    style={{ width: `${progress}%`, transition: 'width 1s ease-out' }}
+                />
+            </div>
+            <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-500">
+                    {seconds < 3 ? 'Generating answer key...' : seconds < 8 ? 'AI is evaluating your response...' : 'Scoring against rubric criteria...'}
+                </p>
+                <span className="text-xs font-mono text-gray-400">{seconds}s</span>
+            </div>
+        </div>
+    );
+}
 // ─── Shared descriptive submission hook ─────────────────────────────────────
 
 function useDescriptiveGrading(role: string, onQuestionScored?: (score: number) => void) {
@@ -892,6 +925,7 @@ function ShortResponseAssessment({ questions, role, onComplete }: { questions: Q
                         {index < questions.length - 1 && (<button onClick={() => navigate(1)} className="flex-1 py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] flex items-center justify-center gap-2">Next <ChevronRight className="w-4 h-4" /></button>)}
                     </div>
                 )}
+                <GradingProgressBar active={g.generating} />
                 <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
 
                 {isLastQuestion && allViewed && (
@@ -982,6 +1016,7 @@ function CaseStudyAssessment({ questions, role, onComplete }: { questions: Quest
                         {index < questions.length - 1 && (<button onClick={() => navigate(1)} className="flex-1 py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] flex items-center justify-center gap-2">Next <ChevronRight className="w-4 h-4" /></button>)}
                     </div>
                 )}
+                <GradingProgressBar active={g.generating} />
                 <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">
@@ -1075,6 +1110,7 @@ function EvaluationAssessment({ questions, role, onComplete }: { questions: Ques
                         {index < questions.length - 1 && (<button onClick={() => navigate(1)} className="flex-1 py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] flex items-center justify-center gap-2">Next <ChevronRight className="w-4 h-4" /></button>)}
                     </div>
                 )}
+                <GradingProgressBar active={g.generating} />
                 <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">
@@ -1180,6 +1216,7 @@ function OpenEndedAssessment({ questions, role, onComplete }: { questions: Quest
                         {index < questions.length - 1 && (<button onClick={() => navigate(1)} className="flex-1 py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] flex items-center justify-center gap-2">Next <ChevronRight className="w-4 h-4" /></button>)}
                     </div>
                 )}
+                <GradingProgressBar active={g.generating} />
                 <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => { g.reset(); setSectionAnswers({}); } : undefined} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">

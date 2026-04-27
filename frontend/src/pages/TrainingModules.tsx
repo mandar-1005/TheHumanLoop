@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useStudyResume } from '../hooks/useStudyResume';
+import { StudyToolsPanel } from '../components/StudyToolsPanel';
 import { supabase } from '../lib/supabaseClient';
-import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, Sparkles, Trash2, Pencil, Check, X } from 'lucide-react';
+import { ChevronLeft, BookOpen, FileText, LayoutDashboard, Users, BarChart3, Settings, Shield, LogOut, MessageCircle, CheckCircle, XCircle, Send, Loader2, Trash2, Pencil, Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment, Question } from '../components/AssessmentRenderer';
-import { AIGradingChat } from '../components/AIGradingChat';
+import StudyChat from '../components/StudyChat';
+import {
+    MermaidDiagram, StudyGuideNarrator, MediaImageCard, VideoRecommendation,
+} from '../components/MultimediaComponents';
+import type { TrainingMedia } from '../components/MultimediaComponents';
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 type TrainingStatus = 'Published' | 'In Review' | 'Draft' | 'Rejected';
@@ -13,6 +20,7 @@ type TrainingStatus = 'Published' | 'In Review' | 'Draft' | 'Rejected';
 type TrainingContent = {
     study_guide: string;
     assessment: Assessment;
+    media?: TrainingMedia;
 };
 
 type TrainingRow = {
@@ -94,17 +102,77 @@ function mapTraining(row: TrainingRow): TrainingModule {
 // ─── Markdown-lite renderer ────────────────────────────────────────────────
 // Renders bold, headings, bullet lists from the study_guide markdown string
 
-function StudyGuideRenderer({ markdown }: { markdown: string }) {
+function StudyGuideRenderer({ markdown, media }: { markdown: string; media?: TrainingMedia }) {
     const lines = markdown.split('\n');
+
+    const diagramsBySection = new Map<string, typeof media extends undefined ? never : NonNullable<TrainingMedia['diagrams']>>();
+    const imagesBySection = new Map<string, NonNullable<TrainingMedia['images']>>();
+    const videosBySection = new Map<string, NonNullable<TrainingMedia['videos']>>();
+
+    if (media?.diagrams) {
+        for (const d of media.diagrams) {
+            const key = d.section_ref.toLowerCase();
+            if (!diagramsBySection.has(key)) diagramsBySection.set(key, []);
+            diagramsBySection.get(key)!.push(d);
+        }
+    }
+    if (media?.images) {
+        for (const img of media.images) {
+            const key = img.section_ref.toLowerCase();
+            if (!imagesBySection.has(key)) imagesBySection.set(key, []);
+            imagesBySection.get(key)!.push(img);
+        }
+    }
+    if (media?.videos) {
+        for (const v of media.videos) {
+            const key = v.section_ref.toLowerCase();
+            if (!videosBySection.has(key)) videosBySection.set(key, []);
+            videosBySection.get(key)!.push(v);
+        }
+    }
+
+    const renderedSections = new Set<string>();
+
+    const renderMediaForSection = (heading: string) => {
+        const key = heading.toLowerCase();
+        if (renderedSections.has(key)) return null;
+        renderedSections.add(key);
+
+        const diagrams = diagramsBySection.get(key) || [];
+        const images = imagesBySection.get(key) || [];
+        const videos = videosBySection.get(key) || [];
+
+        if (!diagrams.length && !images.length && !videos.length) return null;
+
+        return (
+            <div key={`media-${key}`}>
+                {images.map(img => <MediaImageCard key={img.id} image={img} />)}
+                {diagrams.map(d => <MermaidDiagram key={d.id} diagram={d} />)}
+                {videos.map(v => <VideoRecommendation key={v.id} video={v} />)}
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-2 text-sm text-gray-800 leading-relaxed">
             {lines.map((line, i) => {
                 if (line.startsWith('## ')) {
-                    return <h2 key={i} className="text-lg font-bold text-gray-900 mt-4 mb-1">{line.replace('## ', '')}</h2>;
+                    const heading = line.replace('## ', '');
+                    return (
+                        <div key={i}>
+                            <h2 className="text-lg font-bold text-gray-900 mt-4 mb-1">{heading}</h2>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
                 }
                 if (line.startsWith('### ')) {
-                    return <h3 key={i} className="text-base font-semibold text-gray-900 mt-3 mb-1">{line.replace('### ', '')}</h3>;
+                    const heading = line.replace('### ', '');
+                    return (
+                        <div key={i}>
+                            <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1">{heading}</h3>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
                 }
                 if (line.startsWith('#### ')) {
                     return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace('#### ', '')}</h4>;
@@ -124,7 +192,6 @@ function StudyGuideRenderer({ markdown }: { markdown: string }) {
                 }
                 if (line.trim() === '') return <div key={i} className="h-1" />;
 
-                // Inline bold
                 const parts = line.split(/\*\*(.*?)\*\*/g);
                 if (parts.length > 1) {
                     return (
@@ -171,8 +238,18 @@ function AdaptiveStudyUI({
     onFlashcardQuestionsChange?: (contentIndex: number, questions: Question[]) => void;
     persistFlashcards?: boolean;
 }) {
-    const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment' | 'chat'>('guide');
+    const {
+        contentIndex,
+        setContentIndex,
+        studyMode,
+        setStudyMode,
+        resumeApplied,
+    } = useStudyResume(training.id);
+    const [hideResumeBanner, setHideResumeBanner] = useState(false);
+
+    useEffect(() => {
+        setHideResumeBanner(false);
+    }, [training.id]);
 
     const content = workingContents[contentIndex];
 
@@ -182,6 +259,18 @@ function AdaptiveStudyUI({
 
     return (
         <div className="space-y-6">
+            {resumeApplied && !hideResumeBanner && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-sm text-blue-900">
+                    <span>Restored where you left off (saved in this browser).</span>
+                    <button
+                        type="button"
+                        onClick={() => setHideResumeBanner(true)}
+                        className="text-xs font-medium text-blue-700 hover:underline flex-shrink-0"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
             {workingContents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {workingContents.map((_c, i) => {
@@ -228,15 +317,19 @@ function AdaptiveStudyUI({
                         studyMode === 'chat' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                 >
-                    <Sparkles className="w-4 h-4" />
-                    AI Grading Chat
+                    <MessageCircle className="w-4 h-4" />
+                    AI Chat
                 </button>
             </div>
 
             {studyMode === 'guide' && (
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <StudyGuideRenderer markdown={content.study_guide} />
-                </div>
+                <>
+                    <StudyToolsPanel trainingId={training.id} studyGuideMarkdown={content.study_guide} />
+                    <StudyGuideNarrator text={content.study_guide} />
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                        <StudyGuideRenderer markdown={content.study_guide} media={content.media} />
+                    </div>
+                </>
             )}
 
             {studyMode === 'assessment' && content.assessment && (
@@ -255,9 +348,8 @@ function AdaptiveStudyUI({
                 </div>
             )}
 
-            {/* ── AI Grading Chat ── */}
             {studyMode === 'chat' && (
-                <AIGradingChat training={training} />
+                <StudyChat studyGuide={content.study_guide} role={training.role} />
             )}
         </div>
     );
@@ -337,15 +429,19 @@ function Sidebar() {
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export function TrainingModulesPage() {
+    const { user } = useAuth();
     const [rows, setRows] = useState<TrainingModule[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<TrainingModule | null>(null);
+    const [reviewLoading, setReviewLoading] = useState(false);
+    const [rejectReason, setRejectReason] = useState('');
+    const [showRejectInput, setShowRejectInput] = useState(false);
     const [workingContents, setWorkingContents] = useState<TrainingContent[]>([]);
     const [flashcardPersist, setFlashcardPersist] = useState(false);
     const [flashcardSaveMsg, setFlashcardSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null); // training id pending delete
-    const [editingName, setEditingName] = useState<string | null>(null);     // training id being renamed
+    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    const [editingName, setEditingName] = useState<string | null>(null);
     const [nameInput, setNameInput] = useState('');
 
     const total = useMemo(() => rows.length, [rows]);
@@ -384,6 +480,61 @@ export function TrainingModulesPage() {
         void load();
         return () => { mounted = false; };
     }, []);
+
+    const refreshSelected = (newStatus: TrainingStatus) => {
+        if (!selected) return;
+        const updated = { ...selected, status: newStatus };
+        setSelected(updated);
+        setRows(prev => prev.map(r => r.id === updated.id ? updated : r));
+    };
+
+    const handleSubmitForReview = async () => {
+        if (!selected) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/submit-review`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to submit for review');
+            refreshSelected('In Review');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to submit for review');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
+    const handleApprove = async () => {
+        if (!selected || !user) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/approve?user_id=${user.id}`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to approve training');
+            refreshSelected('Published');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to approve');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
+
+    const handleReject = async () => {
+        if (!selected || !user) return;
+        setReviewLoading(true);
+        try {
+            const res = await fetch(`http://127.0.0.1:8000/api/trainings/${selected.id}/reject?user_id=${user.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rejection_reason: rejectReason || null }),
+            });
+            if (!res.ok) throw new Error('Failed to reject training');
+            refreshSelected('Rejected');
+            setShowRejectInput(false);
+            setRejectReason('');
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to reject');
+        } finally {
+            setReviewLoading(false);
+        }
+    };
 
     const handleDelete = async (id: string) => {
         const { error } = await supabase.from('trainings').delete().eq('id', Number(id));
@@ -454,10 +605,100 @@ export function TrainingModulesPage() {
                         </button>
 
                         <div className="mb-6">
-                            <h1 className="text-2xl font-semibold text-gray-900 capitalize">
-                                {selected.name || `${selected.role} Training`}
-                            </h1>
-                            <p className="text-sm text-gray-500 mt-1 capitalize">{selected.role} · Created {selected.createdAt}</p>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h1 className="text-2xl font-semibold text-gray-900 capitalize">
+                                        {selected.name || `${selected.role} Training`}
+                                    </h1>
+                                    <p className="text-sm text-gray-500 mt-1 capitalize">{selected.role} · Created {selected.createdAt}</p>
+                                </div>
+                                <StatusBadge status={selected.status} />
+                            </div>
+                        </div>
+
+                        {/* Review Actions */}
+                        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4">
+                            {selected.status === 'Draft' && (
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-gray-600">This training is a draft. Submit it for review to publish.</p>
+                                    <button
+                                        onClick={handleSubmitForReview}
+                                        disabled={reviewLoading}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                                    >
+                                        {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                        Submit for Review
+                                    </button>
+                                </div>
+                            )}
+
+                            {selected.status === 'In Review' && (
+                                <div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm text-amber-700 font-medium">This training is awaiting review. Approve or reject it.</p>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={handleApprove}
+                                                disabled={reviewLoading}
+                                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                                Approve
+                                            </button>
+                                            <button
+                                                onClick={() => setShowRejectInput(!showRejectInput)}
+                                                disabled={reviewLoading}
+                                                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                <XCircle className="w-4 h-4" />
+                                                Reject
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {showRejectInput && (
+                                        <div className="mt-3 flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={rejectReason}
+                                                onChange={e => setRejectReason(e.target.value)}
+                                                placeholder="Reason for rejection (optional)"
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-red-400"
+                                            />
+                                            <button
+                                                onClick={handleReject}
+                                                disabled={reviewLoading}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                            >
+                                                {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Reject'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {selected.status === 'Published' && (
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle className="w-5 h-5 text-green-600" />
+                                    <p className="text-sm text-green-700 font-medium">This training is published and visible to employees.</p>
+                                </div>
+                            )}
+
+                            {selected.status === 'Rejected' && (
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <XCircle className="w-5 h-5 text-red-500" />
+                                        <p className="text-sm text-red-700">This training was rejected. You can resubmit it for review.</p>
+                                    </div>
+                                    <button
+                                        onClick={handleSubmitForReview}
+                                        disabled={reviewLoading}
+                                        className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-50 transition-colors"
+                                    >
+                                        {reviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                        Resubmit for Review
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {flashcardSaveMsg && (
@@ -513,17 +754,17 @@ export function TrainingModulesPage() {
                                 <tbody className="divide-y divide-gray-200">
                                 {loading && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
                                     </tr>
                                 )}
                                 {!loading && error && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
                                     </tr>
                                 )}
                                 {!loading && !error && rows.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
+                                        <td colSpan={7} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
                                     </tr>
                                 )}
                                 {!loading && !error && rows.map((row) => (

@@ -3,8 +3,9 @@ import {
     LayoutDashboard, BookOpen, FileText, Users,
     BarChart3, Settings, Shield, LogOut,
     User, Lock, CheckCircle2, AlertCircle,
-    Loader2, Save, Eye, EyeOff,
+    Loader2, Save, Eye, EyeOff, History,
 } from 'lucide-react';
+import { getActivityLog } from '../lib/activityLog';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -137,7 +138,7 @@ const BASE_INPUT = 'w-full px-3.5 py-2.5 border rounded-lg text-sm focus:outline
 
 export function SettingsPage() {
     const { user, profile: authProfile, isAdmin } = useAuth();
-    // const navigate = useNavigate();
+
 
     // ── Profile section ──
     const [profileForm, setProfileForm] = useState<ProfileForm>({
@@ -652,7 +653,7 @@ export function SettingsPage() {
                                 <div>
                                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">User ID</p>
                                     <p className="text-gray-900 font-mono text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 inline-block truncate max-w-full">
-                                        {'••••••••••••'}
+                                        {user?.id ?? '—'}
                                     </p>
                                 </div>
                                 <div>
@@ -662,6 +663,40 @@ export function SettingsPage() {
                                     </span>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* ── Recent activity (client-side) ── */}
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-6 py-5 border-b border-gray-200 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg bg-slate-50 flex items-center justify-center">
+                                <History className="w-5 h-5 text-[#1e3a5f]" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-semibold text-gray-900">Recent activity</h3>
+                                <p className="text-xs text-gray-500">
+                                    Actions logged in this browser for awareness (not a substitute for a full server audit log).
+                                </p>
+                            </div>
+                        </div>
+                        <div className="p-6">
+                            {getActivityLog().length === 0 ? (
+                                <p className="text-sm text-gray-500">
+                                    No activity yet. Complete a training, export analytics CSV, or use other actions to populate this list.
+                                </p>
+                            ) : (
+                                <ul className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                                    {getActivityLog().map(entry => (
+                                        <li key={entry.id} className="text-sm border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                                            <p className="font-medium text-gray-900">{entry.action}</p>
+                                            {entry.detail && <p className="text-xs text-gray-600 mt-0.5">{entry.detail}</p>}
+                                            <p className="text-xs text-gray-400 mt-1">
+                                                {new Date(entry.at).toLocaleString()}
+                                            </p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </div>
 

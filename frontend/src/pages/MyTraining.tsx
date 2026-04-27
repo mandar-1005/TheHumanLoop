@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
+import { useStudyResume } from '../hooks/useStudyResume';
+import { StudyToolsPanel } from '../components/StudyToolsPanel';
+import { logActivity } from '../lib/activityLog';
 import {
     Shield, LogOut, BookOpen,
     BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
-    FileText, Award, X, CheckCircle,
+    FileText, MessageCircle, Award, X, CheckCircle,
 } from 'lucide-react';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment } from '../components/AssessmentRenderer';
+import StudyChat from '../components/StudyChat';
+import {
+    MermaidDiagram, StudyGuideNarrator, MediaImageCard, VideoRecommendation,
+} from '../components/MultimediaComponents';
+import type { TrainingMedia } from '../components/MultimediaComponents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +53,7 @@ interface TrainingScore {
 type TrainingContent = {
     study_guide: string;
     assessment: Assessment;
+    media?: TrainingMedia;
 };
 
 type TrainingModule = {
@@ -77,13 +86,78 @@ function getTrainingFromAssignment(a: AssignedTraining) {
 
 // ─── Markdown renderer ──────────────────────────────────────────────────────
 
-function StudyGuideRenderer({ markdown }: { markdown: string }) {
+function StudyGuideRenderer({ markdown, media }: { markdown: string; media?: TrainingMedia }) {
     const lines = markdown.split('\n');
+
+    const diagramsBySection = new Map<string, NonNullable<TrainingMedia['diagrams']>>();
+    const imagesBySection = new Map<string, NonNullable<TrainingMedia['images']>>();
+    const videosBySection = new Map<string, NonNullable<TrainingMedia['videos']>>();
+
+    if (media?.diagrams) {
+        for (const d of media.diagrams) {
+            const key = d.section_ref.toLowerCase();
+            if (!diagramsBySection.has(key)) diagramsBySection.set(key, []);
+            diagramsBySection.get(key)!.push(d);
+        }
+    }
+    if (media?.images) {
+        for (const img of media.images) {
+            const key = img.section_ref.toLowerCase();
+            if (!imagesBySection.has(key)) imagesBySection.set(key, []);
+            imagesBySection.get(key)!.push(img);
+        }
+    }
+    if (media?.videos) {
+        for (const v of media.videos) {
+            const key = v.section_ref.toLowerCase();
+            if (!videosBySection.has(key)) videosBySection.set(key, []);
+            videosBySection.get(key)!.push(v);
+        }
+    }
+
+    const renderedSections = new Set<string>();
+
+    const renderMediaForSection = (heading: string) => {
+        const key = heading.toLowerCase();
+        if (renderedSections.has(key)) return null;
+        renderedSections.add(key);
+
+        const diagrams = diagramsBySection.get(key) || [];
+        const images = imagesBySection.get(key) || [];
+        const videos = videosBySection.get(key) || [];
+
+        if (!diagrams.length && !images.length && !videos.length) return null;
+
+        return (
+            <div key={`media-${key}`}>
+                {images.map(img => <MediaImageCard key={img.id} image={img} />)}
+                {diagrams.map(d => <MermaidDiagram key={d.id} diagram={d} />)}
+                {videos.map(v => <VideoRecommendation key={v.id} video={v} />)}
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-2 text-sm text-gray-800 leading-relaxed">
             {lines.map((line, i) => {
-                if (line.startsWith('## ')) return <h2 key={i} className="text-lg font-bold text-gray-900 mt-4 mb-1">{line.replace('## ', '')}</h2>;
-                if (line.startsWith('### ')) return <h3 key={i} className="text-base font-semibold text-gray-900 mt-3 mb-1">{line.replace('### ', '')}</h3>;
+                if (line.startsWith('## ')) {
+                    const heading = line.replace('## ', '');
+                    return (
+                        <div key={i}>
+                            <h2 className="text-lg font-bold text-gray-900 mt-4 mb-1">{heading}</h2>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
+                }
+                if (line.startsWith('### ')) {
+                    const heading = line.replace('### ', '');
+                    return (
+                        <div key={i}>
+                            <h3 className="text-base font-semibold text-gray-900 mt-3 mb-1">{heading}</h3>
+                            {renderMediaForSection(heading)}
+                        </div>
+                    );
+                }
                 if (line.startsWith('#### ')) return <h4 key={i} className="text-sm font-semibold text-gray-800 mt-2">{line.replace('#### ', '')}</h4>;
                 if (line.match(/^\d+\.\s+\*\*/)) {
                     const text = line.replace(/^\d+\.\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
@@ -119,8 +193,18 @@ function AdaptiveStudyUI({ training, onComplete }: {
     training: TrainingModule;
     onComplete?: (score: number, passed: boolean) => void;
 }) {
-    const [contentIndex, setContentIndex] = useState(0);
-    const [studyMode, setStudyMode] = useState<'guide' | 'assessment'>('guide');
+    const {
+        contentIndex,
+        setContentIndex,
+        studyMode,
+        setStudyMode,
+        resumeApplied,
+    } = useStudyResume(training.id);
+    const [hideResumeBanner, setHideResumeBanner] = useState(false);
+
+    useEffect(() => {
+        setHideResumeBanner(false);
+    }, [training.id]);
 
     const content = training.contents[contentIndex];
 
@@ -128,6 +212,18 @@ function AdaptiveStudyUI({ training, onComplete }: {
 
     return (
         <div className="space-y-6">
+            {resumeApplied && !hideResumeBanner && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-blue-50 border border-blue-100 px-4 py-2.5 text-sm text-blue-900">
+                    <span>Restored where you left off (module and tab are saved in this browser).</span>
+                    <button
+                        type="button"
+                        onClick={() => setHideResumeBanner(true)}
+                        className="text-xs font-medium text-blue-700 hover:underline flex-shrink-0"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
             {training.contents.length > 1 && (
                 <div className="flex gap-2 flex-wrap">
                     {training.contents.map((_c, i) => (
@@ -162,18 +258,34 @@ function AdaptiveStudyUI({ training, onComplete }: {
                     <FileText className="w-4 h-4" />
                     {content.assessment?.type || 'Assessment'}
                 </button>
+                <button
+                    onClick={() => setStudyMode('chat')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                        studyMode === 'chat' ? 'bg-[#1e3a5f] text-white shadow-md' : 'text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                >
+                    <MessageCircle className="w-4 h-4" /> AI Chat
+                </button>
             </div>
 
             {studyMode === 'guide' && (
-                <div className="bg-white border border-gray-200 rounded-xl p-6">
-                    <StudyGuideRenderer markdown={content.study_guide} />
-                </div>
+                <>
+                    <StudyToolsPanel trainingId={training.id} studyGuideMarkdown={content.study_guide} />
+                    <StudyGuideNarrator text={content.study_guide} />
+                    <div className="bg-white border border-gray-200 rounded-xl p-6">
+                        <StudyGuideRenderer markdown={content.study_guide} media={content.media} />
+                    </div>
+                </>
             )}
 
             {studyMode === 'assessment' && content.assessment && (
                 <div className="bg-white border border-gray-200 rounded-xl p-6">
                     <AssessmentRenderer assessment={content.assessment} role={training.role} onComplete={onComplete} />
                 </div>
+            )}
+
+            {studyMode === 'chat' && (
+                <StudyChat studyGuide={content.study_guide} role={training.role} />
             )}
         </div>
     );
@@ -306,6 +418,13 @@ export function MyTrainingPage() {
     const formatDate = (d: string) =>
         new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+    const dueMs = (a: AssignedTraining) => {
+        if (a.due_date) return new Date(a.due_date).getTime();
+        const d = new Date(a.assigned_at);
+        d.setDate(d.getDate() + 7);
+        return d.getTime();
+    };
+
     const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.email ?? 'User';
     const initials = profile
         ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase()
@@ -387,6 +506,7 @@ export function MyTrainingPage() {
             console.error('training_evidence save failed:', saveError);
         } else {
             console.log('training_evidence saved successfully');
+            logActivity('Assessment completed', `${activeTraining.name || activeTraining.role} · ${safeScore}/100`);
         }
 
         // Refresh scores
@@ -470,6 +590,36 @@ export function MyTrainingPage() {
                     </header>
 
                     <main className="p-8 space-y-6">
+                        {(() => {
+                            const now = Date.now();
+                            const threeDays = 3 * 24 * 60 * 60 * 1000;
+                            let overdue = 0;
+                            let soon = 0;
+                            for (const a of assignments) {
+                                const t = getTrainingFromAssignment(a);
+                                if (!t) continue;
+                                const sc = getScore(t.id);
+                                if (sc) continue;
+                                const dm = dueMs(a);
+                                if (dm < now) overdue++;
+                                else if (dm - now <= threeDays) soon++;
+                            }
+                            if (overdue === 0 && soon === 0) return null;
+                            return (
+                                <div className="space-y-2">
+                                    {overdue > 0 && (
+                                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                                            <strong>{overdue}</strong> assignment{overdue !== 1 ? 's are' : ' is'} overdue — please complete {overdue !== 1 ? 'them' : 'it'} as soon as possible.
+                                        </div>
+                                    )}
+                                    {soon > 0 && (
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                            <strong>{soon}</strong> assignment{soon !== 1 ? 's are' : ' is'} due within the next 3 days.
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                         {/* Summary cards */}
                         <div className="grid grid-cols-3 gap-6">
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -584,12 +734,17 @@ export function MyTrainingPage() {
                                                             <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
                                                                 {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
                                                             </button>
-
                                                             {score && (() => {
                                                                 const req = a.min_score ?? null;
                                                                 const meetsReq = req !== null ? score.score >= req : score.passed;
                                                                 return meetsReq ? (
-                                                                    <button onClick={() => setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed, completed_at: score.completed_at })} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            logActivity('Viewed certificate', t?.name || `${t?.company_role ?? ''} training`);
+                                                                            setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed, completed_at: score.completed_at });
+                                                                        }}
+                                                                        className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline"
+                                                                    >
                                                                         <Award className="w-3 h-3" /> Certificate
                                                                     </button>
                                                                 ) : null;
