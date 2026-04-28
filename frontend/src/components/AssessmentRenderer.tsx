@@ -6,6 +6,7 @@ import {
     List, AlignLeft,
 } from 'lucide-react';
 import { useRememberingViewMode, type RememberingViewMode } from '../hooks/useRememberingViewMode';
+import { ContentModerationFilter, ModerationWarning, type ModerationResult } from '../pages/ContentModerationFilter';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,11 +167,13 @@ function FeedbackPanel({
                            feedback,
                            gradeResult,
                            onRegenerate,
+                           outputModeration,
                        }: {
     feedbackStatus: FeedbackStatus;
     feedback: string;
     gradeResult: GradeResult | null;
     onRegenerate?: () => void;
+    outputModeration?: ModerationResult | null;
 }) {
     if (!feedbackStatus) return null;
     const style = getFeedbackStyle(feedbackStatus);
@@ -237,6 +240,11 @@ function FeedbackPanel({
                 >
                     <RefreshCw className="w-3.5 h-3.5" /> Regenerate Feedback
                 </button>
+            )}
+            {outputModeration && (
+                <div className="mt-3">
+                    <ModerationWarning result={outputModeration} />
+                </div>
             )}
         </div>
     );
@@ -796,14 +804,38 @@ function useDescriptiveGrading(role: string, onQuestionScored?: (score: number) 
     const [status, setStatus] = useState<FeedbackStatus>(null);
     const [feedback, setFeedback] = useState('');
     const [gradeResult, setGradeResult] = useState<GradeResult | null>(null);
+    const [inputModeration, setInputModeration] = useState<ModerationResult | null>(null);
+    const [outputModeration, setOutputModeration] = useState<ModerationResult | null>(null);
+
+    // Run input moderation live as the user types
+    const setAnswerWithModeration = (value: string) => {
+        setAnswer(value);
+        if (value.trim().length > 0) {
+            const result = ContentModerationFilter.moderate(value);
+            setInputModeration(result.isClean ? null : result);
+        } else {
+            setInputModeration(null);
+        }
+    };
 
     const reset = () => {
         setAnswer(''); setSubmitted(false); setGenerating(false);
         setStatus(null); setFeedback(''); setGradeResult(null);
+        setInputModeration(null); setOutputModeration(null);
     };
 
-    const submit = async (q: Question, questionType: string) => {
-        if (!answer.trim()) return;
+    const submit = async (q: Question, questionType: string, answerOverride?: string) => {
+        const effectiveAnswer = answerOverride ?? answer;
+        if (!effectiveAnswer.trim()) return;
+
+        // Block submission if input has high-severity content
+        const inputCheck = ContentModerationFilter.moderate(effectiveAnswer);
+        setInputModeration(inputCheck.isClean ? null : inputCheck);
+        if (inputCheck.severity === 'high') return;
+
+        // Use filtered text for submission if content was flagged
+        const answerToSubmit = inputCheck.filteredText ?? effectiveAnswer;
+
         setGenerating(true);
         try {
             const rawRubric: unknown = q.rubric || q.grading_rubric || '';
@@ -814,14 +846,20 @@ function useDescriptiveGrading(role: string, onQuestionScored?: (score: number) 
             // Include scenario in prompt so the grader has full context
             const fullPrompt = [q.scenario, q.prompt || q.question].filter(Boolean).join('\n\n') || 'Answer the following question.';
             const result = await gradeAnswer(
-                `q-${Date.now()}`, fullPrompt, answer,
+                `q-${Date.now()}`, fullPrompt, answerToSubmit,
                 questionType, role, rubric, q.correct_answer,
             );
             setGradeResult(result);
             if (result.score >= 0.7) setStatus('correct');
             else if (result.score >= 0.4) setStatus('partial');
             else setStatus('incorrect');
-            setFeedback(result.feedback || 'Grading complete.');
+            const feedbackText = result.feedback || 'Grading complete.';
+            setFeedback(feedbackText);
+
+            // Moderate the AI-generated feedback
+            const outputCheck = ContentModerationFilter.moderate(feedbackText);
+            setOutputModeration(outputCheck.isClean ? null : outputCheck);
+
             onQuestionScored?.(Math.round(result.score * 100));
         } catch {
             setStatus('partial');
@@ -831,7 +869,11 @@ function useDescriptiveGrading(role: string, onQuestionScored?: (score: number) 
         setSubmitted(true);
     };
 
-    return { answer, setAnswer, submitted, generating, status, feedback, gradeResult, reset, submit };
+    return {
+        answer, setAnswer: setAnswerWithModeration, submitted, generating,
+        status, feedback, gradeResult, reset, submit,
+        inputModeration, outputModeration,
+    };
 }
 
 // ─── 3. Short Response Assessment (Applying) ────────────────────────────────
@@ -914,8 +956,10 @@ function ShortResponseAssessment({ questions, role, onComplete }: { questions: Q
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
                           placeholder="Write your response here... (optional — you may skip)" />
 
+                {g.inputModeration && <ModerationWarning result={g.inputModeration} />}
+
                 {!g.submitted ? (
-                    <button onClick={() => void g.submit(q, 'short_response')} disabled={!g.answer.trim() || g.generating}
+                    <button onClick={() => void g.submit(q, 'short_response')} disabled={!g.answer.trim() || g.generating || g.inputModeration?.severity === 'high'}
                             className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
                         {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Response</>}
                     </button>
@@ -926,7 +970,7 @@ function ShortResponseAssessment({ questions, role, onComplete }: { questions: Q
                     </div>
                 )}
                 <GradingProgressBar active={g.generating} />
-                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
+                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} outputModeration={g.outputModeration} />
 
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)}
@@ -1005,8 +1049,9 @@ function CaseStudyAssessment({ questions, role, onComplete }: { questions: Quest
                 <textarea value={g.answer} onChange={e => g.setAnswer(e.target.value)} disabled={g.submitted} rows={6}
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
                           placeholder="Write your detailed analysis here... (optional — you may skip)" />
+                {g.inputModeration && <ModerationWarning result={g.inputModeration} />}
                 {!g.submitted ? (
-                    <button onClick={() => void g.submit(q, 'case_study')} disabled={!g.answer.trim() || g.generating}
+                    <button onClick={() => void g.submit(q, 'case_study')} disabled={!g.answer.trim() || g.generating || g.inputModeration?.severity === 'high'}
                             className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
                         {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Response</>}
                     </button>
@@ -1017,7 +1062,7 @@ function CaseStudyAssessment({ questions, role, onComplete }: { questions: Quest
                     </div>
                 )}
                 <GradingProgressBar active={g.generating} />
-                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
+                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} outputModeration={g.outputModeration} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">
                         <CheckCircle className="w-4 h-4" /> Submit Assessment
@@ -1099,8 +1144,9 @@ function EvaluationAssessment({ questions, role, onComplete }: { questions: Ques
                 <textarea value={g.answer} onChange={e => g.setAnswer(e.target.value)} disabled={g.submitted} rows={8}
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
                           placeholder="Provide your evaluation with justification... (optional — you may skip)" />
+                {g.inputModeration && <ModerationWarning result={g.inputModeration} />}
                 {!g.submitted ? (
-                    <button onClick={() => void g.submit(q, 'evaluation')} disabled={!g.answer.trim() || g.generating}
+                    <button onClick={() => void g.submit(q, 'evaluation')} disabled={!g.answer.trim() || g.generating || g.inputModeration?.severity === 'high'}
                             className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
                         {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Evaluating...</> : <><CheckCircle className="w-4 h-4" /> Submit Evaluation</>}
                     </button>
@@ -1111,7 +1157,7 @@ function EvaluationAssessment({ questions, role, onComplete }: { questions: Ques
                     </div>
                 )}
                 <GradingProgressBar active={g.generating} />
-                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} />
+                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => g.reset() : undefined} outputModeration={g.outputModeration} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">
                         <CheckCircle className="w-4 h-4" /> Submit Assessment
@@ -1155,8 +1201,7 @@ function OpenEndedAssessment({ questions, role, onComplete }: { questions: Quest
     };
 
     const handleSubmit = () => {
-        if (sections) g.setAnswer(combinedAnswer);
-        void g.submit(q, 'open_ended');
+        void g.submit(q, 'open_ended', combinedAnswer);
     };
 
     const isAnswerEmpty = sections ? Object.values(sectionAnswers).every(v => !v.trim()) : !g.answer.trim();
@@ -1205,8 +1250,9 @@ function OpenEndedAssessment({ questions, role, onComplete }: { questions: Quest
                               className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
                               placeholder="Design your solution here... (optional — you may skip)" />
                 )}
+                {g.inputModeration && <ModerationWarning result={g.inputModeration} />}
                 {!g.submitted ? (
-                    <button onClick={handleSubmit} disabled={isAnswerEmpty || g.generating}
+                    <button onClick={handleSubmit} disabled={isAnswerEmpty || g.generating || g.inputModeration?.severity === 'high'}
                             className="w-full py-3 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] disabled:opacity-40 flex items-center justify-center gap-2">
                         {g.generating ? <><Sparkles className="w-4 h-4 animate-spin" /> Analyzing...</> : <><CheckCircle className="w-4 h-4" /> Submit Design</>}
                     </button>
@@ -1217,7 +1263,7 @@ function OpenEndedAssessment({ questions, role, onComplete }: { questions: Quest
                     </div>
                 )}
                 <GradingProgressBar active={g.generating} />
-                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => { g.reset(); setSectionAnswers({}); } : undefined} />
+                <FeedbackPanel feedbackStatus={g.status} feedback={g.feedback} gradeResult={g.gradeResult} onRegenerate={g.submitted ? () => { g.reset(); setSectionAnswers({}); } : undefined} outputModeration={g.outputModeration} />
                 {isLastQuestion && allViewed && (
                     <button onClick={() => setShowConfirm(true)} className="w-full py-3 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 flex items-center justify-center gap-2">
                         <CheckCircle className="w-4 h-4" /> Submit Assessment
