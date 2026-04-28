@@ -11,7 +11,6 @@ import {
     Plus,
     TrendingUp,
     TrendingDown,
-    ChevronRight,
     MoreVertical,
     Shield,
     AlertTriangle,
@@ -211,6 +210,7 @@ export function Dashboard() {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
+    const [newTrainingName, setNewTrainingName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
     const [creationStep, setCreationStep] = useState(0);
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -406,8 +406,18 @@ export function Dashboard() {
 
             const createdId = data?.result?.training_row?.id ?? null;
             setLastCreatedId(createdId);
+
+            // Save training name to DB if provided
+            if (createdId && newTrainingName.trim()) {
+                await supabase
+                    .from("trainings")
+                    .update({ name: newTrainingName.trim() })
+                    .eq("id", createdId);
+            }
+
             setShowCreateModal(false);
             setNewRole("");
+            setNewTrainingName("");
             setSelectedSSPId("");
             setCreationStep(0);
             setSuccessStep('draft');
@@ -688,50 +698,50 @@ export function Dashboard() {
                                     </button>
                                     {showNotifications && (
                                         <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-                                        <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
-                                            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-                                                <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
-                                                <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
-                                                    <X className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                            <div className="max-h-72 overflow-y-auto">
-                                                {reviewQueue.length === 0 ? (
-                                                    <div className="p-6 text-center">
-                                                        <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
-                                                        <p className="text-sm text-gray-500">No pending notifications</p>
-                                                    </div>
-                                                ) : (
-                                                    reviewQueue.map(item => (
-                                                        <div key={item.id} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
-                                                            <div className="flex items-start gap-3">
-                                                                <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                                                                    <Clock className="w-4 h-4 text-amber-600" />
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-sm font-medium text-gray-900 capitalize">{item.company_role} Training</p>
-                                                                    <p className="text-xs text-gray-500">Awaiting review</p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                            {reviewQueue.length > 0 && (
-                                                <div className="p-3 border-t border-gray-200">
-                                                    <button
-                                                        onClick={() => {
-                                                            setShowNotifications(false);
-                                                            document.getElementById("review-queue-section")?.scrollIntoView({ behavior: "smooth" });
-                                                        }}
-                                                        className="w-full text-center text-xs font-medium text-[#1e3a5f] hover:underline"
-                                                    >
-                                                        View Review Queue
+                                            <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                            <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                    <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                    <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                        <X className="w-4 h-4" />
                                                     </button>
                                                 </div>
-                                            )}
-                                        </div>
+                                                <div className="max-h-72 overflow-y-auto">
+                                                    {reviewQueue.length === 0 ? (
+                                                        <div className="p-6 text-center">
+                                                            <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                            <p className="text-sm text-gray-500">No pending notifications</p>
+                                                        </div>
+                                                    ) : (
+                                                        reviewQueue.map(item => (
+                                                            <div key={item.id} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                                                                        <Clock className="w-4 h-4 text-amber-600" />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-gray-900 capitalize">{item.company_role} Training</p>
+                                                                        <p className="text-xs text-gray-500">Awaiting review</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                                {reviewQueue.length > 0 && (
+                                                    <div className="p-3 border-t border-gray-200">
+                                                        <button
+                                                            onClick={() => {
+                                                                setShowNotifications(false);
+                                                                document.getElementById("review-queue-section")?.scrollIntoView({ behavior: "smooth" });
+                                                            }}
+                                                            className="w-full text-center text-xs font-medium text-[#1e3a5f] hover:underline"
+                                                        >
+                                                            View Review Queue
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </>
                                     )}
                                 </div>
@@ -1168,6 +1178,17 @@ export function Dashboard() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">
                             Create Training Module
                         </h3>
+
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Training Name <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={newTrainingName}
+                            onChange={(e) => setNewTrainingName(e.target.value)}
+                            placeholder="e.g. Developer FedRAMP Onboarding"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4 text-sm focus:outline-none focus:border-[#1e3a5f]"
+                        />
 
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                             Role
