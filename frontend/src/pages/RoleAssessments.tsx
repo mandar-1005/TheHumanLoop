@@ -35,6 +35,7 @@ interface Assignment {
     user_id: string;
     training_id: number;
     min_score?: number | null;
+    due_date?: string | null;
     id?: string;
 }
 
@@ -108,6 +109,7 @@ function AssignModal({
                          trainings,
                          existingAssignments,
                          existingMinScores = {},
+                         existingDueDates = {},
                          onClose,
                          onSaved,
                      }: {
@@ -115,6 +117,7 @@ function AssignModal({
     trainings: Training[];
     existingAssignments: number[];
     existingMinScores?: Record<number, number | null>;
+    existingDueDates?: Record<number, string | null>;
     onClose: () => void;
     onSaved: () => void;
 }) {
@@ -122,6 +125,15 @@ function AssignModal({
     const [selected, setSelected] = useState<number[]>(existingAssignments);
     // per-training min_score: null = completion only, number = minimum grade required
     const [minScores, setMinScores] = useState<Record<number, number | null>>(existingMinScores);
+    // per-training due_date stored as datetime-local string (YYYY-MM-DDTHH:mm) for the input,
+    // converted to ISO only on save
+    const [dueDates, setDueDates] = useState<Record<number, string>>(
+        Object.fromEntries(
+            Object.entries(existingDueDates).flatMap(([k, v]) =>
+                v ? [[Number(k), new Date(v).toISOString().slice(0, 16)]] : []
+            )
+        )
+    );
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -156,19 +168,23 @@ function AssignModal({
                         assigned_by: user?.id,
                         organization_id: employee.organization_id,
                         min_score: minScores[training_id] ?? null,
+                        due_date: dueDates[training_id] ? new Date(dueDates[training_id]).toISOString() : null,
                     })));
                 if (addError) throw addError;
             }
 
-            // Update min_score for existing assignments that are still selected
+            // Update min_score and due_date for existing assignments that are still selected
             const toUpdate = selected.filter(id => existingAssignments.includes(id));
             for (const training_id of toUpdate) {
                 const newMin = minScores[training_id] ?? null;
                 const oldMin = existingMinScores[training_id] ?? null;
-                if (newMin !== oldMin) {
+                const newDueRaw = dueDates[training_id] ?? null;
+                const newDue = newDueRaw ? new Date(newDueRaw).toISOString() : null;
+                const oldDue = existingDueDates[training_id] ?? null;
+                if (newMin !== oldMin || newDue !== oldDue) {
                     const { error: updateError } = await supabase
                         .from('assignments')
-                        .update({ min_score: newMin })
+                        .update({ min_score: newMin, due_date: newDue })
                         .eq('user_id', employee.id)
                         .eq('training_id', training_id);
                     if (updateError) throw updateError;
@@ -226,23 +242,50 @@ function AssignModal({
                                         Created {formatDate(t.created_at)}
                                     </p>
                                     {selected.includes(t.id) && (
-                                        <div className="mt-2 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                                            <label className="text-xs text-gray-600 font-medium whitespace-nowrap">Min grade:</label>
-                                            <select
-                                                value={minScores[t.id] ?? ''}
-                                                onChange={e => setMinScores(prev => ({
-                                                    ...prev,
-                                                    [t.id]: e.target.value === '' ? null : Number(e.target.value)
-                                                }))}
-                                                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
-                                            >
-                                                <option value="">Completion only</option>
-                                                <option value="60">60 — Pass</option>
-                                                <option value="70">70 — Good</option>
-                                                <option value="80">80 — Proficient</option>
-                                                <option value="90">90 — Excellent</option>
-                                                <option value="100">100 — Perfect</option>
-                                            </select>
+                                        <div className="mt-2 space-y-2" onClick={e => e.stopPropagation()}>
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-xs text-gray-600 font-medium whitespace-nowrap">Min grade:</label>
+                                                <select
+                                                    value={minScores[t.id] ?? ''}
+                                                    onChange={e => setMinScores(prev => ({
+                                                        ...prev,
+                                                        [t.id]: e.target.value === '' ? null : Number(e.target.value)
+                                                    }))}
+                                                    className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="">Completion only</option>
+                                                    <option value="60">60 — Pass</option>
+                                                    <option value="70">70 — Good</option>
+                                                    <option value="80">80 — Proficient</option>
+                                                    <option value="90">90 — Excellent</option>
+                                                    <option value="100">100 — Perfect</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-xs text-gray-600 font-medium whitespace-nowrap">Due date:</label>
+                                                <input
+                                                    type="datetime-local"
+                                                    value={dueDates[t.id] ?? ''}
+                                                    onChange={e => setDueDates(prev => ({
+                                                        ...prev,
+                                                        [t.id]: e.target.value,
+                                                    }))}
+                                                    className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                                                />
+                                                {dueDates[t.id] && (
+                                                    <button
+                                                        onClick={() => setDueDates(prev => {
+                                                            const next = { ...prev };
+                                                            delete next[t.id];
+                                                            return next;
+                                                        })}
+                                                        className="text-gray-400 hover:text-red-500"
+                                                        title="Clear due date"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -525,7 +568,7 @@ export function RolesAssessmentsPage() {
 
         const { data: assignData } = await supabase
             .from('assignments')
-            .select('id, user_id, training_id, min_score')
+            .select('id, user_id, training_id, min_score, due_date')
             .eq('organization_id', profile!.organization_id);
 
         setAssignments((assignData ?? []) as Assignment[]);
@@ -545,6 +588,11 @@ export function RolesAssessmentsPage() {
     const getExistingMinScores = (userId: string): Record<number, number | null> =>
         Object.fromEntries(
             assignments.filter(a => a.user_id === userId).map(a => [a.training_id, a.min_score ?? null])
+        );
+
+    const getExistingDueDates = (userId: string): Record<number, string | null> =>
+        Object.fromEntries(
+            assignments.filter(a => a.user_id === userId).map(a => [a.training_id, a.due_date ?? null])
         );
 
     const filtered = employees.filter(e => {
@@ -723,6 +771,7 @@ export function RolesAssessmentsPage() {
                     trainings={trainings}
                     existingAssignments={getExistingAssignments(assignTarget.id)}
                     existingMinScores={getExistingMinScores(assignTarget.id)}
+                    existingDueDates={getExistingDueDates(assignTarget.id)}
                     onClose={() => setAssignTarget(null)}
                     onSaved={loadAll}
                 />

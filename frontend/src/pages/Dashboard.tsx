@@ -37,6 +37,7 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { ProfileDropdown } from "../components/ProfileDropdown";
 
 const navItems = [
     {
@@ -745,20 +746,20 @@ export function Dashboard() {
                                         </>
                                     )}
                                 </div>
-
-                                <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                                    <div className="text-right">
-                                        <p className="text-sm font-medium text-gray-900">
-                                            {displayName}
-                                        </p>
-                                        <p className="text-xs text-gray-600 capitalize">
-                                            {profile?.role ?? ""}
-                                        </p>
-                                    </div>
-                                    <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium">
-                                        {initials}
-                                    </div>
-                                </div>
+                                <ProfileDropdown displayName={displayName} role={profile?.role} initials={initials} />
+                                {/*<div className="flex items-center gap-3 pl-4 border-l border-gray-200">*/}
+                                {/*    <div className="text-right">*/}
+                                {/*        <p className="text-sm font-medium text-gray-900">*/}
+                                {/*            {displayName}*/}
+                                {/*        </p>*/}
+                                {/*        <p className="text-xs text-gray-600 capitalize">*/}
+                                {/*            {profile?.role ?? ""}*/}
+                                {/*        </p>*/}
+                                {/*    </div>*/}
+                                {/*    <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium">*/}
+                                {/*        {initials}*/}
+                                {/*    </div>*/}
+                                {/*</div>*/}
                             </div>
                         </div>
                     </div>
