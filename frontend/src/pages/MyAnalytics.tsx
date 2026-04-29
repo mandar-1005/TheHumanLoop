@@ -5,7 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import {
     Shield, LogOut, BookOpen, BarChart3, Settings,
     Award, CheckCircle, XCircle, X, Clock, TrendingUp,
+    Bell, History,
 } from 'lucide-react';
+import { ProfileDropdown } from '../components/ProfileDropdown';
+import { TrainingHistorySidebar } from '../pages/TrainingHistorySidebar';
 
 interface EvidenceRow {
     training_id: number;
@@ -15,6 +18,7 @@ interface EvidenceRow {
     completed_at: string;
     assessment_type?: string | null;
     training_name?: string | null;
+    min_score?: number | null;
 }
 
 function Sidebar() {
@@ -105,6 +109,17 @@ export function MyAnalyticsPage() {
     const [totalAssigned, setTotalAssigned] = useState(0);
     const [loading, setLoading] = useState(true);
     const [selectedCert, setSelectedCert] = useState<EvidenceRow | null>(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+
+    // Full assignment rows needed for bell due-date logic
+    const [assignmentRows, setAssignmentRows] = useState<{
+        training_id: number;
+        min_score: number | null;
+        due_date: string | null;
+        assigned_at: string;
+        training_name?: string;
+    }[]>([]);
 
     const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.email ?? 'User';
     const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : '?';
@@ -113,7 +128,7 @@ export function MyAnalyticsPage() {
         if (!user) return;
         const load = async () => {
             setLoading(true);
-            const [{ data: evData }, { count }] = await Promise.all([
+            const [{ data: evData }, { data: assignData }] = await Promise.all([
                 supabase
                     .from('training_evidence')
                     .select('training_id, company_role, score, passed, completed_at, assessment_type')
@@ -121,10 +136,15 @@ export function MyAnalyticsPage() {
                     .order('completed_at', { ascending: false }),
                 supabase
                     .from('assignments')
-                    .select('*', { count: 'exact', head: true })
+                    .select('training_id, min_score, due_date, assigned_at')
                     .eq('user_id', user.id),
             ]);
             const rawEvidence = (evData ?? []) as EvidenceRow[];
+            const assignments = (assignData ?? []) as { training_id: number; min_score: number | null; due_date: string | null; assigned_at: string }[];
+            setAssignmentRows(assignments);
+            const minScoreMap: Record<number, number | null> = Object.fromEntries(
+                assignments.map(a => [a.training_id, a.min_score ?? null])
+            );
 
             // Fetch training names for all training_ids in evidence
             const trainingIds = [...new Set(rawEvidence.map(e => e.training_id).filter(Boolean))];
@@ -141,14 +161,15 @@ export function MyAnalyticsPage() {
                 }
             }
 
-            // Merge names into evidence rows
+            // Merge names and min_score into evidence rows
             const evidenceWithNames = rawEvidence.map(e => ({
                 ...e,
                 training_name: nameMap[e.training_id] || null,
+                min_score: minScoreMap[e.training_id] ?? null,
             }));
 
             setEvidence(evidenceWithNames);
-            setTotalAssigned(count ?? 0);
+            setTotalAssigned(assignments.length);
             setLoading(false);
         };
         void load();
@@ -157,10 +178,26 @@ export function MyAnalyticsPage() {
     const trainingTitle = (e: EvidenceRow) =>
         e.training_name || `${e.company_role} Training`;
 
-    const completed  = evidence.length;
-    const passed     = evidence.filter(e => e.passed).length;
-    const avgScore   = completed > 0 ? Math.round(evidence.reduce((s, e) => s + e.score, 0) / completed) : null;
-    const compRate   = totalAssigned > 0 ? Math.round((completed / totalAssigned) * 100) : 0;
+    // Helper: does this evidence row meet its min_score requirement?
+    const meetsMin = (e: EvidenceRow) => {
+        const req = e.min_score ?? null;
+        return req !== null ? e.score >= req : e.passed;
+    };
+
+    // Use unique training_ids (latest attempt per training)
+    const latestByTraining: Record<number, EvidenceRow> = {};
+    evidence.forEach(e => {
+        const ex = latestByTraining[e.training_id];
+        if (!ex || new Date(e.completed_at) > new Date(ex.completed_at)) {
+            latestByTraining[e.training_id] = e;
+        }
+    });
+    const latestEvidence = Object.values(latestByTraining);
+
+    const completed  = latestEvidence.filter(e => meetsMin(e)).length;
+    const passed     = latestEvidence.filter(e => meetsMin(e)).length; // same — met min = earned cert
+    const avgScore   = latestEvidence.length > 0 ? Math.round(latestEvidence.reduce((s, e) => s + e.score, 0) / latestEvidence.length) : null;
+    const compRate   = totalAssigned > 0 ? Math.min(100, Math.round((completed / totalAssigned) * 100)) : 0;
     const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     return (
@@ -175,11 +212,90 @@ export function MyAnalyticsPage() {
                                 <p className="text-sm text-gray-600 mt-1">Your training performance and certificates</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
-                                </div>
-                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">{initials}</div>
+                                {/* History button */}
+                                {!loading && evidence.length > 0 && (
+                                    <button
+                                        onClick={() => setHistoryOpen(true)}
+                                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        <History className="w-4 h-4" />
+                                        History
+                                        <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                                            {evidence.length}
+                                        </span>
+                                    </button>
+                                )}
+
+                                {/* Bell notifications */}
+                                {!loading && (() => {
+                                    const now = Date.now();
+                                    const threeDays = 3 * 24 * 60 * 60 * 1000;
+                                    const completedIds = new Set(evidence.map(e => e.training_id));
+                                    const items: { label: string; urgency: 'overdue' | 'soon' }[] = [];
+                                    for (const a of assignmentRows) {
+                                        if (completedIds.has(a.training_id)) continue;
+                                        const dm = a.due_date
+                                            ? new Date(a.due_date).getTime()
+                                            : new Date(a.assigned_at).getTime() + 7 * 24 * 60 * 60 * 1000;
+                                        const name = a.training_name || `Training #${a.training_id}`;
+                                        if (dm < now) items.push({ label: name, urgency: 'overdue' });
+                                        else if (dm - now <= threeDays) items.push({ label: name, urgency: 'soon' });
+                                    }
+                                    return (
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowNotifications(n => !n)}
+                                                className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                <Bell className="w-5 h-5 text-gray-600" />
+                                                {items.length > 0 && (
+                                                    <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1">
+                                                        {items.length}
+                                                    </span>
+                                                )}
+                                            </button>
+                                            {showNotifications && (
+                                                <>
+                                                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                                    <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                                        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                            <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                            <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="max-h-72 overflow-y-auto">
+                                                            {items.length === 0 ? (
+                                                                <div className="p-6 text-center">
+                                                                    <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                                    <p className="text-sm text-gray-500">All caught up!</p>
+                                                                </div>
+                                                            ) : (
+                                                                items.map((item, i) => (
+                                                                    <div key={i} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                                        <div className="flex items-start gap-3">
+                                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${item.urgency === 'overdue' ? 'bg-red-100' : 'bg-amber-100'}`}>
+                                                                                <Bell className={`w-4 h-4 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                                                                                <p className={`text-xs mt-0.5 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>
+                                                                                    {item.urgency === 'overdue' ? 'Overdue — complete ASAP' : 'Due within 3 days'}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                <ProfileDropdown displayName={displayName} role={profile?.role} initials={initials} />
                             </div>
                         </div>
                     </header>
@@ -215,14 +331,14 @@ export function MyAnalyticsPage() {
                         </div>
 
                         {/* Certificates section */}
-                        {passed > 0 && (
+                        {latestEvidence.filter(e => meetsMin(e)).length > 0 && (
                             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                                 <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
                                     <Award className="w-4 h-4 text-amber-500" />
                                     <h3 className="text-base font-semibold text-gray-900">Certificates Earned</h3>
                                 </div>
                                 <div className="p-6 grid grid-cols-2 gap-4">
-                                    {evidence.filter(e => e.passed).map((e, i) => (
+                                    {latestEvidence.filter(e => meetsMin(e)).map((e, i) => (
                                         <div key={i} className="flex items-center justify-between p-4 border border-amber-200 bg-amber-50 rounded-xl">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -272,7 +388,7 @@ export function MyAnalyticsPage() {
                                     {evidence.map((e, i) => (
                                         <tr key={i} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">
-                                                {e.company_role} Training
+                                                {trainingTitle(e)}
                                                 {e.assessment_type && <span className="ml-2 text-xs text-gray-400 font-normal">({e.assessment_type})</span>}
                                             </td>
                                             <td className="px-6 py-4">
@@ -284,15 +400,17 @@ export function MyAnalyticsPage() {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${e.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                        {e.passed ? <><CheckCircle className="w-3 h-3" /> Passed</> : <><XCircle className="w-3 h-3" /> Failed</>}
+                                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${meetsMin(e) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {meetsMin(e) ? <><CheckCircle className="w-3 h-3" /> Passed</> : <><XCircle className="w-3 h-3" /> Failed</>}
                                                     </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600">{formatDate(e.completed_at)}</td>
                                             <td className="px-6 py-4">
-                                                <button onClick={() => setSelectedCert(e)} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
-                                                    <Award className="w-3 h-3" /> Certificate
-                                                </button>
+                                                {meetsMin(e) && (
+                                                    <button onClick={() => setSelectedCert(e)} className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline">
+                                                        <Award className="w-3 h-3" /> Certificate
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -307,6 +425,20 @@ export function MyAnalyticsPage() {
             {selectedCert && (
                 <CertModal ev={selectedCert} name={displayName} org={profile?.organization_id ?? ''} onClose={() => setSelectedCert(null)} />
             )}
+            <TrainingHistorySidebar
+                attempts={evidence.map(e => ({
+                    id: String(e.training_id),
+                    trainingId: e.training_id,
+                    trainingName: e.training_name || `${e.company_role} Training`,
+                    completedAt: e.completed_at,
+                    score: e.score,
+                    passed: e.passed,
+                    feedback: {},
+                }))}
+                isOpen={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                onFeedbackUpdate={() => {}}
+            />
         </>
     );
 }

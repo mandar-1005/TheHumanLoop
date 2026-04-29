@@ -8,7 +8,7 @@ import { logActivity } from '../lib/activityLog';
 import {
     Shield, LogOut, BookOpen,
     BarChart3, Loader2, ChevronRight, Settings, ChevronLeft,
-    FileText, MessageCircle, Award, X, CheckCircle,
+    FileText, MessageCircle, Award, X, CheckCircle, History, Bell,
 } from 'lucide-react';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment } from '../components/AssessmentRenderer';
@@ -17,6 +17,9 @@ import {
     MermaidDiagram, StudyGuideNarrator, MediaImageCard, VideoRecommendation,
 } from '../components/MultimediaComponents';
 import type { TrainingMedia } from '../components/MultimediaComponents';
+import { TrainingHistorySidebar, type TrainingAttempt } from '../pages/TrainingHistorySidebar';
+import {ProfileDropdown} from "../components/ProfileDropdown.tsx";
+
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +27,7 @@ interface AssignedTraining {
     id: string;
     assigned_at: string;
     due_date: string | null;
+    min_score?: number | null;
     training: {
         id: number;
         name?: string | null;
@@ -42,10 +46,16 @@ interface AssignedTraining {
 }
 
 interface TrainingScore {
+    id: string;
     training_id: number;
     score: number;
     passed: boolean;
     completed_at: string;
+    retake_count?: number;
+    strengths?: string[] | null;
+    improvements?: string[] | null;
+    ai_response?: string | null;
+    user_feedback?: 'positive' | 'negative' | null;
 }
 
 type TrainingContent = {
@@ -60,6 +70,7 @@ type TrainingModule = {
     role: string;
     contents: TrainingContent[];
     createdAt: string;
+    minScore?: number | null;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -355,9 +366,10 @@ export function MyTrainingPage() {
     const [scores, setScores] = useState<TrainingScore[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // The training module currently open for study (null = list view)
     const [activeTraining, setActiveTraining] = useState<TrainingModule | null>(null);
-    const [certificate, setCertificate] = useState<{ role: string; score: number; passed: boolean } | null>(null);
+    const [certificate, setCertificate] = useState<{ role: string; score: number; passed: boolean; completed_at?: string } | null>(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -365,39 +377,79 @@ export function MyTrainingPage() {
         const load = async () => {
             setLoading(true);
 
+            // Fetch assignments without join — join is unreliable when training RLS
+            // uses a different policy path than the employee can reach
             const { data: assignData } = await supabase
                 .from('assignments')
-                .select(`
-                    id,
-                    assigned_at,
-                    due_date,
-                    training:training_id (
-                        id, name, company_role, training_json, created_at, status
-                    )
-                `)
+                .select('id, assigned_at, due_date, min_score, training_id')
                 .eq('user_id', user.id)
                 .order('assigned_at', { ascending: false });
 
-            const allAssignments = (assignData ?? []) as unknown as AssignedTraining[];
+            console.log('[MyTraining] raw assignments:', assignData);
+
+            const rawAssignments = (assignData ?? []) as { id: string; assigned_at: string; due_date: string | null; min_score: number | null; training_id: number }[];
+
+            // Fetch the trainings for those assignment IDs separately
+            const trainingIds = rawAssignments.map(a => a.training_id).filter(Boolean);
+            let trainingMap: Record<number, AssignedTraining['training']> = {};
+            if (trainingIds.length > 0) {
+                const { data: trainingRows } = await supabase
+                    .from('trainings')
+                    .select('id, name, company_role, training_json, created_at, status')
+                    .in('id', trainingIds);
+                console.log('[MyTraining] training rows:', trainingRows);
+                if (trainingRows) {
+                    trainingMap = Object.fromEntries(trainingRows.map(t => [t.id, t]));
+                }
+            }
+
+            // Merge and filter to published only
+            const allAssignments: AssignedTraining[] = rawAssignments.map(a => ({
+                ...a,
+                training: trainingMap[a.training_id] ?? null,
+            })) as unknown as AssignedTraining[];
+
             const publishedOnly = allAssignments.filter(a => {
                 const t = Array.isArray(a.training) ? a.training[0] : a.training;
-                return !t?.status || t.status === 'published';
+                if (!t) return false; // training not found at all — skip
+                return !t.status || t.status === 'published';
             });
             setAssignments(publishedOnly);
 
-            const { data: scoreData } = await supabase
+            const { data: scoreData, error: scoreError } = await supabase
                 .from('training_evidence')
-                .select('training_id, score, passed, completed_at')
-                .eq('user_id', user.id);
+                .select('id, training_id, score, passed, completed_at, retake_count')
+                .eq('user_id', user.id)
+                .order('completed_at', { ascending: false });
 
-            setScores((scoreData ?? []) as TrainingScore[]);
+            if (scoreError) console.error('[MyTraining] training_evidence fetch error:', scoreError);
+
+            // Attempt to fetch feedback columns — these may not exist yet if the
+            // migration hasn't been run. If they fail, we just skip them.
+            let feedbackMap: Record<string, { strengths?: string[] | null; improvements?: string[] | null; ai_response?: string | null; user_feedback?: 'positive' | 'negative' | null }> = {};
+            if (scoreData && scoreData.length > 0) {
+                const { data: feedbackData } = await supabase
+                    .from('training_evidence')
+                    .select('id, strengths, improvements, ai_response, user_feedback')
+                    .eq('user_id', user.id);
+                if (feedbackData) {
+                    feedbackMap = Object.fromEntries(feedbackData.map(r => [r.id, r]));
+                }
+            }
+
+            const merged = (scoreData ?? []).map(s => ({
+                ...s,
+                ...(feedbackMap[s.id] ?? {}),
+            }));
+
+            console.log('[MyTraining] training_evidence rows:', merged);
+            setScores(merged as TrainingScore[]);
             setLoading(false);
         };
 
         void load();
     }, [user]);
 
-    // Returns due date: use stored value if set, otherwise assigned_at + 7 days
     const dueDateFor = (a: AssignedTraining): string => {
         if (a.due_date) return formatDate(a.due_date);
         const d = new Date(a.assigned_at);
@@ -405,8 +457,12 @@ export function MyTrainingPage() {
         return formatDate(d.toISOString());
     };
 
-    const getScore = (trainingId: number) =>
-        scores.find(s => s.training_id === trainingId);
+    // Always coerce to Number so string IDs from Supabase match correctly
+    const getScore = (trainingId: number | string) =>
+        scores.find(s => s.training_id === Number(trainingId));
+
+    const retakeCountFor = (trainingId: number | string) =>
+        scores.find(s => s.training_id === Number(trainingId))?.retake_count ?? 0;
 
     const formatDate = (d: string) =>
         new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -423,24 +479,51 @@ export function MyTrainingPage() {
         ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase()
         : '?';
 
-    // Open a specific assigned training inline
+    // Build TrainingAttempt list for the history sidebar
+    const attempts: TrainingAttempt[] = scores.map(s => {
+        const assignment = assignments.find(a => Number(getTrainingFromAssignment(a)?.id) === s.training_id);
+        const t = assignment ? getTrainingFromAssignment(assignment) : null;
+        const name = t?.name || (t ? `${t.company_role} Training` : `Training #${s.training_id}`);
+        return {
+            id: s.id,
+            trainingId: s.training_id,
+            trainingName: name,
+            completedAt: s.completed_at,
+            score: s.score,
+            passed: s.passed,
+            feedback: {
+                strengths: s.strengths ?? undefined,
+                improvements: s.improvements ?? undefined,
+                aiResponse: s.ai_response ?? undefined,
+                userFeedback: s.user_feedback ?? null,
+            },
+        };
+    });
+
+    const handleFeedbackUpdate = (trainingId: number, vote: 'positive' | 'negative' | null) => {
+        setScores(prev => prev.map(s =>
+            s.training_id === trainingId ? { ...s, user_feedback: vote } : s
+        ));
+    };
+
     const openTraining = (a: AssignedTraining) => {
         const t = getTrainingFromAssignment(a);
         if (!t) return;
 
         const contents = parseTrainingJson(t.training_json);
+        const minScore = a.min_score ?? null;
         setActiveTraining({
             id: String(t.id),
             name: t.name || '',
             role: t.company_role,
             contents,
             createdAt: formatDate(t.created_at),
+            minScore,
         });
     };
 
     const handleComplete = async (score: number, passed: boolean) => {
         if (!user || !activeTraining) return;
-        // Clamp score to valid 0-100 integer range for DB check constraint
         const safeScore = Math.min(100, Math.max(0, Math.round(score)));
 
         const orgId = profile?.organization_id;
@@ -455,36 +538,32 @@ export function MyTrainingPage() {
             organization_id: orgId,
             company_role: activeTraining.role,
             score: safeScore,
-            // passed is a generated column (score >= 70) — do not insert it
             assessment_type: activeTraining.contents[0]?.assessment?.type ?? null,
             completed_at: new Date().toISOString(),
         };
 
         console.log('Saving training_evidence:', payload);
 
-        // Check if a record already exists for this user + training
         const { data: existing } = await supabase
             .from('training_evidence')
-            .select('id')
+            .select('id, retake_count')
             .eq('user_id', user.id)
             .eq('training_id', payload.training_id)
             .maybeSingle();
 
         let saveError;
         if (existing?.id) {
-            // Update existing row
             const { error } = await supabase
                 .from('training_evidence')
                 .update({
                     score: payload.score,
-                    // passed is generated — not updatable
                     assessment_type: payload.assessment_type,
                     completed_at: payload.completed_at,
+                    retake_count: (existing.retake_count ?? 0) + 1,
                 })
                 .eq('id', existing.id);
             saveError = error;
         } else {
-            // Insert new row
             const { error } = await supabase
                 .from('training_evidence')
                 .insert(payload);
@@ -499,12 +578,24 @@ export function MyTrainingPage() {
         }
 
         // Refresh scores
-        const { data } = await supabase
+        const { data: refreshData } = await supabase
             .from('training_evidence')
-            .select('training_id, score, passed, completed_at')
+            .select('id, training_id, score, passed, completed_at, retake_count')
+            .eq('user_id', user.id)
+            .order('completed_at', { ascending: false });
+        const { data: refreshFeedback } = await supabase
+            .from('training_evidence')
+            .select('id, strengths, improvements, ai_response, user_feedback')
             .eq('user_id', user.id);
-        setScores((data ?? []) as TrainingScore[]);
-        setCertificate({ role: activeTraining.role, score, passed });
+        const refreshFeedbackMap = Object.fromEntries((refreshFeedback ?? []).map(r => [r.id, r]));
+        const refreshMerged = (refreshData ?? []).map(s => ({ ...s, ...(refreshFeedbackMap[s.id] ?? {}) }));
+        setScores(refreshMerged as TrainingScore[]);
+
+        const minRequired = activeTraining.minScore ?? null;
+        const meetsMin = minRequired !== null ? safeScore >= minRequired : passed;
+        if (meetsMin) {
+            setCertificate({ role: activeTraining.role, score: safeScore, passed, completed_at: new Date().toISOString() });
+        }
         setActiveTraining(null);
     };
 
@@ -529,15 +620,16 @@ export function MyTrainingPage() {
                                     {activeTraining.name || `${activeTraining.role} Training`}
                                 </h2>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
-                                </div>
-                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
-                                    {initials}
-                                </div>
-                            </div>
+                            <ProfileDropdown displayName={displayName} role={profile?.role} initials={initials} />
+                            {/*<div className="flex items-center gap-3">*/}
+                            {/*    <div className="text-right">*/}
+                            {/*        <p className="text-sm font-medium text-gray-900">{displayName}</p>*/}
+                            {/*        <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>*/}
+                            {/*    </div>*/}
+                            {/*    <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">*/}
+                            {/*        {initials}*/}
+                            {/*    </div>*/}
+                            {/*</div>*/}
                         </div>
                     </header>
                     <main className="p-8">
@@ -561,48 +653,93 @@ export function MyTrainingPage() {
                                 <p className="text-sm text-gray-600 mt-1">Welcome back, {displayName}</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
-                                </div>
-                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">
-                                    {initials}
-                                </div>
+                                {!loading && scores.length > 0 && (
+                                    <button
+                                        onClick={() => setHistoryOpen(true)}
+                                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        <History className="w-4 h-4" />
+                                        History
+                                        <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                                            {scores.length}
+                                        </span>
+                                    </button>
+                                )}
+
+                                {/* Bell notifications */}
+                                {!loading && (() => {
+                                    const now = Date.now();
+                                    const threeDays = 3 * 24 * 60 * 60 * 1000;
+                                    const items: { label: string; urgency: 'overdue' | 'soon' }[] = [];
+                                    for (const a of assignments) {
+                                        const t = getTrainingFromAssignment(a);
+                                        if (!t) continue;
+                                        if (getScore(t.id)) continue;
+                                        const dm = dueMs(a);
+                                        const name = t.name || `${t.company_role} Training`;
+                                        if (dm < now) items.push({ label: name, urgency: 'overdue' });
+                                        else if (dm - now <= threeDays) items.push({ label: name, urgency: 'soon' });
+                                    }
+                                    return (
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowNotifications(n => !n)}
+                                                className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                <Bell className="w-5 h-5 text-gray-600" />
+                                                {items.length > 0 && (
+                                                    <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1">
+                                                        {items.length}
+                                                    </span>
+                                                )}
+                                            </button>
+                                            {showNotifications && (
+                                                <>
+                                                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                                    <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                                        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                            <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                            <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="max-h-72 overflow-y-auto">
+                                                            {items.length === 0 ? (
+                                                                <div className="p-6 text-center">
+                                                                    <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                                    <p className="text-sm text-gray-500">All caught up!</p>
+                                                                </div>
+                                                            ) : (
+                                                                items.map((item, i) => (
+                                                                    <div key={i} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                                        <div className="flex items-start gap-3">
+                                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${item.urgency === 'overdue' ? 'bg-red-100' : 'bg-amber-100'}`}>
+                                                                                <Bell className={`w-4 h-4 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                                                                                <p className={`text-xs mt-0.5 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>
+                                                                                    {item.urgency === 'overdue' ? 'Overdue — complete ASAP' : 'Due within 3 days'}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                <ProfileDropdown displayName={displayName} role={profile?.role} initials={initials} />
                             </div>
                         </div>
                     </header>
 
                     <main className="p-8 space-y-6">
-                        {(() => {
-                            const now = Date.now();
-                            const threeDays = 3 * 24 * 60 * 60 * 1000;
-                            let overdue = 0;
-                            let soon = 0;
-                            for (const a of assignments) {
-                                const t = getTrainingFromAssignment(a);
-                                if (!t) continue;
-                                const sc = getScore(t.id);
-                                if (sc) continue;
-                                const dm = dueMs(a);
-                                if (dm < now) overdue++;
-                                else if (dm - now <= threeDays) soon++;
-                            }
-                            if (overdue === 0 && soon === 0) return null;
-                            return (
-                                <div className="space-y-2">
-                                    {overdue > 0 && (
-                                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
-                                            <strong>{overdue}</strong> assignment{overdue !== 1 ? 's are' : ' is'} overdue — please complete {overdue !== 1 ? 'them' : 'it'} as soon as possible.
-                                        </div>
-                                    )}
-                                    {soon > 0 && (
-                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                                            <strong>{soon}</strong> assignment{soon !== 1 ? 's are' : ' is'} due within the next 3 days.
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
                         {/* Summary cards */}
                         <div className="grid grid-cols-3 gap-6">
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -611,12 +748,22 @@ export function MyTrainingPage() {
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
                                 <p className="text-sm text-gray-600">Completed</p>
-                                <p className="text-3xl font-bold text-gray-900 mt-1">{scores.length}</p>
+                                <p className="text-3xl font-bold text-gray-900 mt-1">
+                                    {assignments.filter(a => {
+                                        const s = scores.find(sc => sc.training_id === Number(getTrainingFromAssignment(a)?.id));
+                                        if (!s) return false;
+                                        const req = a.min_score ?? null;
+                                        return req !== null ? s.score >= req : s.passed;
+                                    }).length}
+                                </p>
                             </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-6">
                                 <p className="text-sm text-gray-600">Passed</p>
                                 <p className="text-3xl font-bold text-green-600 mt-1">
-                                    {scores.filter(s => s.passed).length}
+                                    {assignments.filter(a => {
+                                        const s = scores.find(sc => sc.training_id === Number(getTrainingFromAssignment(a)?.id));
+                                        return s?.passed ?? false;
+                                    }).length}
                                 </p>
                             </div>
                         </div>
@@ -648,6 +795,7 @@ export function MyTrainingPage() {
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assigned</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Due Date</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Score</th>
+                                            <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Retakes</th>
                                             <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
                                             <th className="px-6 py-3" />
                                         </tr>
@@ -677,36 +825,50 @@ export function MyTrainingPage() {
                                                         {score ? `${score.score}/100` : '—'}
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        {score ? (
-                                                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${
-                                                                score.passed
-                                                                    ? 'bg-green-100 text-green-700'
-                                                                    : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                            {score.passed ? 'Passed' : 'Failed'}
-                                                        </span>
-                                                        ) : (
-                                                            <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                                                            Pending
-                                                        </span>
-                                                        )}
+                                                        {retakeCountFor(Number(getTrainingFromAssignment(a)?.id)) > 0
+                                                            ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{retakeCountFor(Number(getTrainingFromAssignment(a)?.id))}x</span>
+                                                            : <span className="text-xs text-gray-400">—</span>}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        {(() => {
+                                                            if (!score) return (
+                                                                <div>
+                                                                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Pending</span>
+                                                                    <p className="text-xs text-gray-400 mt-1">{a.min_score ? `Min: ${a.min_score}/100` : 'Completion only'}</p>
+                                                                </div>
+                                                            );
+                                                            const req = a.min_score ?? null;
+                                                            const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                            return (
+                                                                <div>
+                                                                    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${meetsReq ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                                        {meetsReq ? 'Passed' : 'Failed'}
+                                                                    </span>
+                                                                    <p className="text-xs text-gray-400 mt-1">{req ? `Min: ${req}/100` : 'Completion only'}</p>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-3">
                                                             <button onClick={() => openTraining(a)} className="flex items-center gap-1 text-xs text-[#1e3a5f] font-medium hover:underline">
                                                                 {score ? 'Retake' : 'Start'} <ChevronRight className="w-3 h-3" />
                                                             </button>
-                                                            {score && (
-                                                                <button
-                                                                    onClick={() => {
-                                                                        logActivity('Viewed certificate', t?.name || `${t?.company_role ?? ''} training`);
-                                                                        setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed });
-                                                                    }}
-                                                                    className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline"
-                                                                >
-                                                                    <Award className="w-3 h-3" /> Certificate
-                                                                </button>
-                                                            )}
+                                                            {score && (() => {
+                                                                const req = a.min_score ?? null;
+                                                                const meetsReq = req !== null ? score.score >= req : score.passed;
+                                                                return meetsReq ? (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            logActivity('Viewed certificate', t?.name || `${t?.company_role ?? ''} training`);
+                                                                            setCertificate({ role: t?.company_role ?? '', score: score.score, passed: score.passed, completed_at: score.completed_at });
+                                                                        }}
+                                                                        className="flex items-center gap-1 text-xs text-amber-600 font-medium hover:underline"
+                                                                    >
+                                                                        <Award className="w-3 h-3" /> Certificate
+                                                                    </button>
+                                                                ) : null;
+                                                            })()}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -720,6 +882,15 @@ export function MyTrainingPage() {
                     </main>
                 </div>
             </div>
+
+            {/* ── Training History Sidebar ── */}
+            <TrainingHistorySidebar
+                attempts={attempts}
+                isOpen={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                onFeedbackUpdate={handleFeedbackUpdate}
+            />
+
             {/* ── Certificate Modal ── */}
             {certificate && (
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -744,7 +915,7 @@ export function MyTrainingPage() {
                                 <span className="text-xl font-bold text-green-700">{certificate.score}/100</span>
                                 <span className="text-sm text-green-600">· {certificate.passed ? 'Passed' : 'Completed'}</span>
                             </div>
-                            <p className="text-xs text-gray-400">Issued {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                            <p className="text-xs text-gray-400">Issued {certificate.completed_at ? new Date(certificate.completed_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
                             <p className="text-xs text-gray-400 mt-1">FedRAMP Compliant · MARi Platform</p>
                         </div>
                         <div className="p-6 flex gap-3">

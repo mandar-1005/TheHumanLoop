@@ -1,1 +1,189 @@
 @import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+/* ─── Dark mode global overrides ──────────────────────────────────────────── */
+
+.dark {
+    color-scheme: dark;
+}
+
+/* Page backgrounds */
+.dark body,
+.dark .min-h-screen {
+    background-color: #0f172a !important;
+}
+
+/* White surfaces → dark cards */
+.dark .bg-white {
+    background-color: #1e293b !important;
+}
+
+/* Gray backgrounds */
+.dark .bg-gray-50  { background-color: #1e293b !important; }
+.dark .bg-gray-100 { background-color: #273548 !important; }
+.dark .bg-gray-200 { background-color: #334155 !important; }
+
+/* Borders */
+.dark .border-gray-100 { border-color: #334155 !important; }
+.dark .border-gray-200 { border-color: #334155 !important; }
+.dark .border-gray-300 { border-color: #475569 !important; }
+
+/* Text */
+.dark .text-gray-900 { color: #f1f5f9 !important; }
+.dark .text-gray-800 { color: #e2e8f0 !important; }
+.dark .text-gray-700 { color: #cbd5e1 !important; }
+.dark .text-gray-600 { color: #94a3b8 !important; }
+.dark .text-gray-500 { color: #64748b !important; }
+.dark .text-gray-400 { color: #475569 !important; }
+
+/* Sidebar & header */
+.dark aside { background-color: #1e293b !important; border-color: #334155 !important; }
+.dark header { background-color: #1e293b !important; border-color: #334155 !important; }
+
+/* Table hover */
+.dark .hover\:bg-gray-50:hover { background-color: #273548 !important; }
+
+/* Row dividers */
+.dark .divide-gray-200 > * + * { border-color: #2d3f55 !important; }
+.dark .divide-gray-100 > * + * { border-color: #243044 !important; }
+.dark td, .dark tr { border-color: #2d3f55 !important; }
+.dark tbody tr:first-child td { border-top: none !important; }
+.dark thead { background-color: #162032 !important; border-bottom-color: #2d3f55 !important; }
+
+/* Active tab — brand navy invisible on dark */
+.dark .text-\[\#1e3a5f\] { color: #93c5fd !important; }
+.dark .border-\[\#1e3a5f\] { border-color: #93c5fd !important; }
+.dark .border-b-\[\#1e3a5f\] { border-bottom-color: #93c5fd !important; }
+
+/* Blue — resume banner + selected states */
+.dark .bg-blue-50  { background-color: #1e3050 !important; }
+.dark .bg-blue-100 { background-color: #1e2f4a !important; }
+.dark .border-blue-100 { border-color: #1e3050 !important; }
+.dark .border-blue-200 { border-color: #2d4a7a !important; }
+.dark .border-blue-300 { border-color: #3b82f6 !important; }
+.dark .text-blue-900 { color: #bfdbfe !important; }
+.dark .text-blue-800 { color: #93c5fd !important; }
+.dark .text-blue-700 { color: #93c5fd !important; }
+.dark .text-blue-600 { color: #60a5fa !important; }
+.dark .hover\:bg-blue-50:hover { background-color: #1e3050 !important; }
+
+/* Indigo — DESIGN PROMPT box, history badge, sidebar icon */
+.dark .bg-indigo-50  { background-color: #1e1f3a !important; }
+.dark .bg-indigo-100 { background-color: #1e1b4b !important; }
+.dark .bg-indigo-600 { background-color: #4338ca !important; }
+.dark .border-indigo-200 { border-color: #3730a3 !important; }
+.dark .text-indigo-700 { color: #a5b4fc !important; }
+.dark .text-indigo-600 { color: #818cf8 !important; }
+
+/* Stone/Neutral — StudyToolsPanel background */
+.dark .bg-stone-50  { background-color: #1e293b !important; }
+.dark .bg-stone-100 { background-color: #273548 !important; }
+.dark .bg-stone-200 { background-color: #334155 !important; }
+.dark .border-stone-200 { border-color: #334155 !important; }
+.dark .border-stone-300 { border-color: #475569 !important; }
+.dark .text-stone-600 { color: #94a3b8 !important; }
+.dark .text-stone-700 { color: #cbd5e1 !important; }
+.dark .text-stone-800 { color: #e2e8f0 !important; }
+
+.dark .bg-neutral-50  { background-color: #1e293b !important; }
+.dark .bg-neutral-100 { background-color: #273548 !important; }
+.dark .border-neutral-200 { border-color: #334155 !important; }
+.dark .text-neutral-600 { color: #94a3b8 !important; }
+.dark .text-neutral-700 { color: #cbd5e1 !important; }
+
+/* Zinc */
+.dark .bg-zinc-50  { background-color: #1e293b !important; }
+.dark .bg-zinc-100 { background-color: #273548 !important; }
+.dark .border-zinc-200 { border-color: #334155 !important; }
+
+/* Send button & navy accent — lighten bg-[#1e3a5f] in dark mode so it reads against dark backgrounds */
+.dark .bg-\[\#1e3a5f\] { background-color: #2d5a8e !important; }
+.dark .hover\:bg-\[\#152d4a\]:hover { background-color: #3a6fa8 !important; }
+
+/* Study guide bullet dot — hardcoded navy color, needs to lighten in dark */
+.dark .text-\[\#1e3a5f\] { color: #93c5fd !important; }
+
+/* Slate */
+.dark .bg-slate-50  { background-color: #1e293b !important; }
+.dark .bg-slate-100 { background-color: #273548 !important; }
+.dark .bg-slate-800 { background-color: #1e293b !important; }
+.dark .border-slate-200 { border-color: #334155 !important; }
+
+/* Tab inactive hover */
+.dark .hover\:bg-gray-100:hover { background-color: #273548 !important; }
+
+/* Purple — Remember */
+.dark .bg-purple-100  { background-color: #2e1a4a !important; }
+.dark .border-purple-300 { border-color: #7c3aed !important; }
+.dark .text-purple-800 { color: #d8b4fe !important; }
+.dark .text-purple-600 { color: #c084fc !important; }
+
+/* Green — Apply */
+.dark .bg-green-50  { background-color: #0f2a1a !important; }
+.dark .bg-green-100 { background-color: #14361f !important; }
+.dark .border-green-200 { border-color: #166534 !important; }
+.dark .border-green-300 { border-color: #16a34a !important; }
+.dark .text-green-800 { color: #86efac !important; }
+.dark .text-green-700 { color: #4ade80 !important; }
+.dark .text-green-600 { color: #34d399 !important; }
+
+/* Yellow — Analyze */
+.dark .bg-yellow-50  { background-color: #2d2800 !important; }
+.dark .bg-yellow-100 { background-color: #2d2500 !important; }
+.dark .border-yellow-200 { border-color: #7a6800 !important; }
+.dark .border-yellow-300 { border-color: #a16207 !important; }
+.dark .text-yellow-800 { color: #fde68a !important; }
+.dark .text-yellow-700 { color: #fbbf24 !important; }
+
+/* Orange — Evaluate */
+.dark .bg-orange-100 { background-color: #2d1a00 !important; }
+.dark .border-orange-300 { border-color: #c2410c !important; }
+.dark .text-orange-800 { color: #fdba74 !important; }
+.dark .text-orange-700 { color: #fb923c !important; }
+
+/* Red — Create + delete buttons */
+.dark .bg-red-50  { background-color: #2d0f0f !important; }
+.dark .bg-red-100 { background-color: #3d1515 !important; }
+.dark .border-red-300 { border-color: #dc2626 !important; }
+.dark .text-red-800 { color: #fca5a5 !important; }
+.dark .text-red-600 { color: #f87171 !important; }
+.dark .hover\:bg-red-50:hover { background-color: #2d0f0f !important; }
+
+/* Amber */
+.dark .bg-amber-50  { background-color: #2d2008 !important; }
+.dark .bg-amber-100 { background-color: #3d2c0a !important; }
+.dark .border-amber-200 { border-color: #78450a !important; }
+.dark .border-amber-300 { border-color: #92540c !important; }
+.dark .text-amber-800 { color: #fcd34d !important; }
+.dark .text-amber-700 { color: #fbbf24 !important; }
+
+/* Gradients — Bloom's Taxonomy panel (from-purple-50 to-blue-50) */
+.dark .bg-gradient-to-r {
+    background-image: none !important;
+}
+.dark .from-purple-50 {
+    background-color: #1e293b !important;
+}
+.dark .to-blue-50 {
+    background-color: #1e293b !important;
+}
+/* Inputs, selects, textareas */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #475569 !important; }
+
+/* Modals */
+.dark .shadow-xl  { box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important; }
+.dark .shadow-2xl { box-shadow: 0 25px 80px rgba(0,0,0,0.7) !important; }
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dark ::-webkit-scrollbar-track { background: #0f172a; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
