@@ -653,7 +653,7 @@ export function MyTrainingPage() {
                                 <p className="text-sm text-gray-600 mt-1">Welcome back, {displayName}</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                {scores.length > 0 && (
+                                {!loading && scores.length > 0 && (
                                     <button
                                         onClick={() => setHistoryOpen(true)}
                                         className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -667,7 +667,7 @@ export function MyTrainingPage() {
                                 )}
 
                                 {/* Bell notifications */}
-                                {(() => {
+                                {!loading && (() => {
                                     const now = Date.now();
                                     const threeDays = 3 * 24 * 60 * 60 * 1000;
                                     const items: { label: string; urgency: 'overdue' | 'soon' }[] = [];

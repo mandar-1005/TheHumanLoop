@@ -3,7 +3,7 @@ import {
     LayoutDashboard, BookOpen, FileText, Users,
     BarChart3, Settings, Shield, LogOut,
     User, Lock, CheckCircle2, AlertCircle,
-    Loader2, Save, Eye, EyeOff, History,
+    Loader2, Save, Eye, EyeOff, History, Bell, X,
     Sun, Moon,
 } from 'lucide-react';
 import { getActivityLog } from '../lib/activityLog';
@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { useTheme } from '../context/ThemeContext';
 import { ProfileDropdown } from '../components/ProfileDropdown';
+import { TrainingHistorySidebar, type TrainingAttempt } from '../pages/TrainingHistorySidebar';
 
 interface ProfileForm { firstName: string; lastName: string; role: string; }
 interface PasswordForm { currentPassword: string; newPassword: string; confirmPassword: string; }
@@ -88,6 +89,42 @@ export function SettingsPage() {
     const { toggleTheme, isDark } = useTheme();
     const initialTab = (new URLSearchParams(window.location.search).get('tab') ?? 'appearance') as 'appearance' | 'profile' | 'security';
     const [activeTab, setActiveTab] = useState<'appearance' | 'profile' | 'security'>(initialTab);
+
+    // Bell + history
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [notifLoaded, setNotifLoaded] = useState(false);
+    const [notifItems, setNotifItems] = useState<{ label: string; urgency: 'overdue' | 'soon' }[]>([]);
+    const [historyAttempts, setHistoryAttempts] = useState<TrainingAttempt[]>([]);
+    const [hasHistory, setHasHistory] = useState(false);
+
+    useEffect(() => {
+        if (!user || isAdmin) return; // only for employees
+        const loadBellData = async () => {
+            const [{ data: assignData }, { data: scoreData }] = await Promise.all([
+                supabase.from('assignments').select('training_id, due_date, assigned_at').eq('user_id', user.id),
+                supabase.from('training_evidence').select('id, training_id, score, passed, completed_at').eq('user_id', user.id).order('completed_at', { ascending: false }),
+            ]);
+            const completedIds = new Set((scoreData ?? []).map((s: { training_id: number }) => s.training_id));
+            const now = Date.now();
+            const threeDays = 3 * 24 * 60 * 60 * 1000;
+            const items: { label: string; urgency: 'overdue' | 'soon' }[] = [];
+            for (const a of (assignData ?? []) as { training_id: number; due_date: string | null; assigned_at: string }[]) {
+                if (completedIds.has(a.training_id)) continue;
+                const dm = a.due_date ? new Date(a.due_date).getTime() : new Date(a.assigned_at).getTime() + 7 * 24 * 60 * 60 * 1000;
+                if (dm < now) items.push({ label: `Training #${a.training_id}`, urgency: 'overdue' });
+                else if (dm - now <= threeDays) items.push({ label: `Training #${a.training_id}`, urgency: 'soon' });
+            }
+            setNotifItems(items);
+            setHasHistory((scoreData ?? []).length > 0);
+            setHistoryAttempts((scoreData ?? []).map((s: { id: string; training_id: number; score: number; passed: boolean; completed_at: string }) => ({
+                id: s.id, trainingId: s.training_id, trainingName: `Training #${s.training_id}`,
+                completedAt: s.completed_at, score: s.score, passed: s.passed, feedback: {},
+            })));
+            setNotifLoaded(true);
+        };
+        void loadBellData();
+    }, [user, isAdmin]);
 
     const [profileForm, setProfileForm] = useState<ProfileForm>({ firstName: '', lastName: '', role: '' });
     const [profileTouched, setProfileTouched] = useState<Record<string, boolean>>({});
@@ -184,7 +221,77 @@ export function SettingsPage() {
                             <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Manage your account and preferences</p>
                         </div>
-                        <ProfileDropdown displayName={displayName} role={authProfile?.role} initials={initials} />
+                        <div className="flex items-center gap-3">
+                            {/* History — employees only */}
+                            {!isAdmin && notifLoaded && hasHistory && (
+                                <button
+                                    onClick={() => setHistoryOpen(true)}
+                                    className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    <History className="w-4 h-4" />
+                                    History
+                                    <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                                        {historyAttempts.length}
+                                    </span>
+                                </button>
+                            )}
+
+                            {/* Bell — employees only */}
+                            {!isAdmin && notifLoaded && (
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowNotifications(n => !n)}
+                                        className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                    >
+                                        <Bell className="w-5 h-5 text-gray-600" />
+                                        {notifItems.length > 0 && (
+                                            <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1">
+                                                {notifItems.length}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {showNotifications && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                            <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                    <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                    <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="max-h-72 overflow-y-auto">
+                                                    {notifItems.length === 0 ? (
+                                                        <div className="p-6 text-center">
+                                                            <CheckCircle2 className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                            <p className="text-sm text-gray-500">All caught up!</p>
+                                                        </div>
+                                                    ) : (
+                                                        notifItems.map((item, i) => (
+                                                            <div key={i} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                                <div className="flex items-start gap-3">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${item.urgency === 'overdue' ? 'bg-red-100' : 'bg-amber-100'}`}>
+                                                                        <Bell className={`w-4 h-4 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                                                                        <p className={`text-xs mt-0.5 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>
+                                                                            {item.urgency === 'overdue' ? 'Overdue — complete ASAP' : 'Due within 3 days'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            <ProfileDropdown displayName={displayName} role={authProfile?.role} initials={initials} />
+                        </div>
                     </div>
                 </header>
 
@@ -421,6 +528,14 @@ export function SettingsPage() {
                     </div>
                 </main>
             </div>
+            {!isAdmin && (
+                <TrainingHistorySidebar
+                    attempts={historyAttempts}
+                    isOpen={historyOpen}
+                    onClose={() => setHistoryOpen(false)}
+                    onFeedbackUpdate={() => {}}
+                />
+            )}
         </div>
     );
 }

@@ -5,7 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import {
     Shield, LogOut, BookOpen, BarChart3, Settings,
     Award, CheckCircle, XCircle, X, Clock, TrendingUp,
+    Bell, History,
 } from 'lucide-react';
+import { ProfileDropdown } from '../components/ProfileDropdown';
+import { TrainingHistorySidebar } from '../pages/TrainingHistorySidebar';
 
 interface EvidenceRow {
     training_id: number;
@@ -106,6 +109,17 @@ export function MyAnalyticsPage() {
     const [totalAssigned, setTotalAssigned] = useState(0);
     const [loading, setLoading] = useState(true);
     const [selectedCert, setSelectedCert] = useState<EvidenceRow | null>(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [showNotifications, setShowNotifications] = useState(false);
+
+    // Full assignment rows needed for bell due-date logic
+    const [assignmentRows, setAssignmentRows] = useState<{
+        training_id: number;
+        min_score: number | null;
+        due_date: string | null;
+        assigned_at: string;
+        training_name?: string;
+    }[]>([]);
 
     const displayName = profile ? `${profile.first_name} ${profile.last_name}` : user?.email ?? 'User';
     const initials = profile ? `${profile.first_name?.[0] ?? ''}${profile.last_name?.[0] ?? ''}`.toUpperCase() : '?';
@@ -122,11 +136,12 @@ export function MyAnalyticsPage() {
                     .order('completed_at', { ascending: false }),
                 supabase
                     .from('assignments')
-                    .select('training_id, min_score')
+                    .select('training_id, min_score, due_date, assigned_at')
                     .eq('user_id', user.id),
             ]);
             const rawEvidence = (evData ?? []) as EvidenceRow[];
-            const assignments = (assignData ?? []) as { training_id: number; min_score: number | null }[];
+            const assignments = (assignData ?? []) as { training_id: number; min_score: number | null; due_date: string | null; assigned_at: string }[];
+            setAssignmentRows(assignments);
             const minScoreMap: Record<number, number | null> = Object.fromEntries(
                 assignments.map(a => [a.training_id, a.min_score ?? null])
             );
@@ -197,11 +212,90 @@ export function MyAnalyticsPage() {
                                 <p className="text-sm text-gray-600 mt-1">Your training performance and certificates</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <p className="text-sm font-medium text-gray-900">{displayName}</p>
-                                    <p className="text-xs text-gray-600 capitalize">{profile?.role ?? ''}</p>
-                                </div>
-                                <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium uppercase">{initials}</div>
+                                {/* History button */}
+                                {!loading && evidence.length > 0 && (
+                                    <button
+                                        onClick={() => setHistoryOpen(true)}
+                                        className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        <History className="w-4 h-4" />
+                                        History
+                                        <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-1.5 py-0.5 rounded-full">
+                                            {evidence.length}
+                                        </span>
+                                    </button>
+                                )}
+
+                                {/* Bell notifications */}
+                                {!loading && (() => {
+                                    const now = Date.now();
+                                    const threeDays = 3 * 24 * 60 * 60 * 1000;
+                                    const completedIds = new Set(evidence.map(e => e.training_id));
+                                    const items: { label: string; urgency: 'overdue' | 'soon' }[] = [];
+                                    for (const a of assignmentRows) {
+                                        if (completedIds.has(a.training_id)) continue;
+                                        const dm = a.due_date
+                                            ? new Date(a.due_date).getTime()
+                                            : new Date(a.assigned_at).getTime() + 7 * 24 * 60 * 60 * 1000;
+                                        const name = a.training_name || `Training #${a.training_id}`;
+                                        if (dm < now) items.push({ label: name, urgency: 'overdue' });
+                                        else if (dm - now <= threeDays) items.push({ label: name, urgency: 'soon' });
+                                    }
+                                    return (
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowNotifications(n => !n)}
+                                                className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                <Bell className="w-5 h-5 text-gray-600" />
+                                                {items.length > 0 && (
+                                                    <span className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1">
+                                                        {items.length}
+                                                    </span>
+                                                )}
+                                            </button>
+                                            {showNotifications && (
+                                                <>
+                                                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                                                    <div className="absolute right-0 top-12 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                                                        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                                                            <h4 className="text-sm font-semibold text-gray-900">Notifications</h4>
+                                                            <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <div className="max-h-72 overflow-y-auto">
+                                                            {items.length === 0 ? (
+                                                                <div className="p-6 text-center">
+                                                                    <CheckCircle className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                                                                    <p className="text-sm text-gray-500">All caught up!</p>
+                                                                </div>
+                                                            ) : (
+                                                                items.map((item, i) => (
+                                                                    <div key={i} className="px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                                                                        <div className="flex items-start gap-3">
+                                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${item.urgency === 'overdue' ? 'bg-red-100' : 'bg-amber-100'}`}>
+                                                                                <Bell className={`w-4 h-4 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`} />
+                                                                            </div>
+                                                                            <div>
+                                                                                <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                                                                                <p className={`text-xs mt-0.5 ${item.urgency === 'overdue' ? 'text-red-600' : 'text-amber-600'}`}>
+                                                                                    {item.urgency === 'overdue' ? 'Overdue — complete ASAP' : 'Due within 3 days'}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                <ProfileDropdown displayName={displayName} role={profile?.role} initials={initials} />
                             </div>
                         </div>
                     </header>
@@ -331,6 +425,20 @@ export function MyAnalyticsPage() {
             {selectedCert && (
                 <CertModal ev={selectedCert} name={displayName} org={profile?.organization_id ?? ''} onClose={() => setSelectedCert(null)} />
             )}
+            <TrainingHistorySidebar
+                attempts={evidence.map(e => ({
+                    id: String(e.training_id),
+                    trainingId: e.training_id,
+                    trainingName: e.training_name || `${e.company_role} Training`,
+                    completedAt: e.completed_at,
+                    score: e.score,
+                    passed: e.passed,
+                    feedback: {},
+                }))}
+                isOpen={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                onFeedbackUpdate={() => {}}
+            />
         </>
     );
 }
