@@ -79,3 +79,32 @@ def generate_training_with_media(ssp_text, roles, company_id: str) -> dict:
     return {
         "training_row": {**training_row, "training_json": json.dumps(parsed)},
     }
+
+def regenerate_training_from_critique(
+    previous_training_json: str,
+    role: str,
+    critique_text: str,
+    temperature: float = 0.2,
+) -> str:
+    """Regenerate training JSON using human critique and prior output as context."""
+    training_agent = TrainingAgent()
+
+    regenerate_prompt = f"""
+You generated FedRAMP training content before for role: {role}
+
+PREVIOUS_TRAINING_JSON:
+{previous_training_json}
+
+HUMAN_CRITIQUE:
+{critique_text}
+
+Task:
+- Produce a fully revised training JSON that addresses the critique.
+- Preserve any parts that are already high quality and compatible with the required output shape.
+- Keep the same top-level shape required by the system instruction:
+  study_guide, assessment, and media with diagrams and videos arrays.
+- Make sure assessment question format matches the assessment.
+- Return strict JSON only.
+"""
+
+    return training_agent.run(regenerate_prompt, temperature=temperature)
