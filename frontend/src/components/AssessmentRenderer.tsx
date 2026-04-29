@@ -295,7 +295,7 @@ function BulletRememberingView({ questions }: { questions: Question[] }) {
             {questions.map((q, i) => (
                 <li
                     key={i}
-                    className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-800"
+                    className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800"
                 >
                     <p className="font-semibold text-gray-900 whitespace-pre-wrap">{q.term || '—'}</p>
                     <p className="mt-2 text-gray-700 whitespace-pre-wrap leading-relaxed">{q.definition || '—'}</p>

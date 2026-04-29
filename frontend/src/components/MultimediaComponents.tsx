@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import {
-    Play, Pause, Square, Volume2, VolumeX,
+    Play, Pause, Square, Volume2,
     ChevronDown, ZoomIn, X, Image as ImageIcon,
 } from 'lucide-react';
 
-let mermaidReady = false;
-function ensureMermaidInit() {
-    if (mermaidReady) return;
-    mermaid.initialize({
-        startOnLoad: false,
-        theme: 'default',
-        securityLevel: 'strict',
-        fontFamily: 'Inter, system-ui, sans-serif',
-    });
-    mermaidReady = true;
+let mermaidInitPromise: Promise<void> | null = null;
+function ensureMermaidInit(): Promise<void> {
+    if (mermaidInitPromise) return mermaidInitPromise;
+    mermaidInitPromise = Promise.resolve(
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            suppressErrorRendering: false,
+        }),
+    );
+    return mermaidInitPromise;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -51,23 +54,70 @@ export type TrainingMedia = {
 
 // ─── Mermaid Diagram ─────────────────────────────────────────────────────────
 
+/**
+ * Mermaid's flowchart grammar treats bare `(` / `)` inside node labels and
+ * edge labels as shape tokens (stadium, subgraph…), causing parse errors for
+ * labels like `[Security Testing (SAST/DAST)]` or `-->|HTTPS/TLS (SC-8)|`.
+ *
+ * Fix: replace `(` / `)` that appear *inside* bracket content — [ ], { },
+ * ( ) node shapes, and pipe edge-labels | | — with their Unicode small-form
+ * lookalikes ﹙ ﹚.  These render identically in SVG text but are never
+ * interpreted as grammar tokens by the Mermaid parser.
+ */
+function sanitizeMermaidCode(raw: string): string {
+    const encode = (s: string) => s.replace(/\(/g, '\uFE59').replace(/\)/g, '\uFE5A');
+
+    // Some diagrams are stored as a single line with semicolons between statements.
+    // Expand "A --> B; C --> D" into proper line breaks so the parser sees them separately.
+    const expanded = raw
+        .replace(/\\n/g, '\n')
+        .replace(/;(\s*)([A-Za-z])/g, ';\n$2')
+        .trim();
+
+    return expanded
+        .split('\n')
+        .map((line, idx) => {
+            // Leave the graph-type declaration line untouched (flowchart TD, graph LR, etc.)
+            if (idx === 0 && /^\s*(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie)\b/i.test(line)) {
+                return line;
+            }
+            // Replace parens inside node labels and edge labels with visually identical
+            // Unicode small-form parens that the Mermaid grammar never tokenises.
+            return line
+                .replace(/\[([^\]]*)\]/g, (_, inner) => `[${encode(inner)}]`)
+                .replace(/\{([^}]*)\}/g, (_, inner) => `{${encode(inner)}}`)
+                .replace(/\(([^)]*)\)/g, (_, inner) => `(${encode(inner)})`)
+                .replace(/\|([^|]+)\|/g, (_, inner) => `|${encode(inner)}|`);
+        })
+        .join('\n');
+}
+
 export function MermaidDiagram({ diagram }: { diagram: MediaDiagram }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [error, setError] = useState(false);
 
     useEffect(() => {
         if (!containerRef.current) return;
-        ensureMermaidInit();
-        const id = `mermaid-${diagram.id}-${Date.now()}`;
-        const code = diagram.mermaid_code.replace(/\\n/g, '\n');
+        let cancelled = false;
 
-        mermaid.render(id, code)
+        // Sanitize ID: mermaid v11 requires valid HTML identifiers (no colons, slashes, etc.)
+        const safeId = `mermaid-${diagram.id.replace(/[^a-zA-Z0-9]/g, '_')}-${Date.now()}`;
+
+        const code = sanitizeMermaidCode(diagram.mermaid_code);
+
+        ensureMermaidInit()
+            .then(() => mermaid.render(safeId, code))
             .then(({ svg }) => {
-                if (containerRef.current) {
+                if (!cancelled && containerRef.current) {
                     containerRef.current.innerHTML = svg;
                 }
             })
-            .catch(() => setError(true));
+            .catch((err) => {
+                console.warn('[MermaidDiagram] render failed:', err);
+                if (!cancelled) setError(true);
+            });
+
+        return () => { cancelled = true; };
     }, [diagram.mermaid_code, diagram.id]);
 
     if (error) {
