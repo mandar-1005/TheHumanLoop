@@ -39,11 +39,11 @@ export function StudyToolsPanel({ trainingId, studyGuideMarkdown }: Props) {
     };
 
     return (
-        <div className="border border-amber-200 bg-amber-50/60 rounded-xl overflow-hidden">
+        <div className="border border-gray-200 bg-gray-50 rounded-xl overflow-hidden">
             <button
                 type="button"
                 onClick={() => setOpen(o => !o)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-semibold text-amber-900 hover:bg-amber-100/50"
+                className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-semibold text-gray-700 hover:bg-gray-100"
             >
                 <span className="flex items-center gap-2">
                     <StickyNote className="w-4 h-4" />
@@ -52,20 +52,20 @@ export function StudyToolsPanel({ trainingId, studyGuideMarkdown }: Props) {
                 {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
             {open && (
-                <div className="px-4 pb-4 space-y-4 border-t border-amber-200/80">
+                <div className="px-4 pb-4 space-y-4 border-t border-gray-200">
                     <div>
-                        <label className="block text-xs font-medium text-amber-900/80 mb-1.5">Your notes (saved in this browser)</label>
+                        <label className="block text-xs font-medium text-gray-600 mb-1.5">Your notes (saved in this browser)</label>
                         <textarea
                             value={notes}
                             onChange={e => setNotes(e.target.value)}
                             rows={3}
                             placeholder="Jot down concepts to revisit…"
-                            className="w-full text-sm border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-amber-400/40 bg-white"
+                            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-300 bg-white"
                         />
                     </div>
                     {headings.length > 0 && (
                         <div>
-                            <p className="text-xs font-medium text-amber-900/80 mb-2 flex items-center gap-1">
+                            <p className="text-xs font-medium text-gray-600 mb-2 flex items-center gap-1">
                                 <Bookmark className="w-3.5 h-3.5" /> Bookmark sections
                             </p>
                             <ul className="max-h-40 overflow-y-auto space-y-1">
@@ -77,7 +77,7 @@ export function StudyToolsPanel({ trainingId, studyGuideMarkdown }: Props) {
                                             className={`w-full text-left text-xs px-2 py-1.5 rounded-md transition-colors ${
                                                 bookmarks.includes(h.text)
                                                     ? 'bg-[#1e3a5f] text-white'
-                                                    : 'bg-white border border-amber-100 text-gray-700 hover:bg-amber-100/80'
+                                                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-100'
                                             }`}
                                         >
                                             <span className="opacity-60 mr-1">{h.level === 2 ? '##' : '###'}</span>

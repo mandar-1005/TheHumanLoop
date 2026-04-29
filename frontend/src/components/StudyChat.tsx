@@ -208,7 +208,7 @@ export default function StudyChat({ studyGuide, role }: StudyChatProps) {
                     <button
                         onClick={handleSendMessage}
                         disabled={!inputValue.trim() || isTyping}
-                        className="px-6 py-3 bg-[#1e3a5f] text-white rounded-lg font-medium hover:bg-[#152d4a] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-6 py-3 bg-[#1e3a5f] text-white rounded-lg font-medium hover:bg-[#152d4a] transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed dark:disabled:bg-slate-700 dark:disabled:text-slate-500 flex items-center gap-2"
                     >
                         <Send className="w-4 h-4" />
                         Send
