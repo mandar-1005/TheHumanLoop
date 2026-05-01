@@ -3,29 +3,29 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 import {
-  LayoutDashboard,
-  BookOpen,
-  FileText,
-  Users,
-  BarChart3,
-  Settings,
-  Search,
-  Bell,
-  Plus,
-  TrendingUp,
-  TrendingDown,
-  MoreVertical,
-  Shield,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  Download,
-  ExternalLink,
-  LogOut,
-  Upload,
-  Trash2,
-  Image as ImageIcon,
-  X,
+    LayoutDashboard,
+    BookOpen,
+    FileText,
+    Users,
+    BarChart3,
+    Settings,
+    Search,
+    Bell,
+    Plus,
+    TrendingUp,
+    TrendingDown,
+    MoreVertical,
+    Shield,
+    AlertTriangle,
+    CheckCircle,
+    Clock,
+    Download,
+    ExternalLink,
+    LogOut,
+    Upload,
+    Trash2,
+    Image as ImageIcon,
+    X,
 } from "lucide-react";
 // import {
 //     BarChart,
@@ -49,12 +49,12 @@ const navItems = [
 ];
 
 interface SSPDocRow {
-  id: string;
-  file_name: string;
-  file_path: string;
-  file_size: number;
-  created_at: string;
-  extracted_text?: string | null;
+    id: string;
+    file_name: string;
+    file_path: string;
+    file_size: number;
+    created_at: string;
+    extracted_text?: string | null;
 }
 
 interface TrainingModule {
@@ -334,6 +334,7 @@ export function Dashboard() {
             if (elapsedRef.current) clearInterval(elapsedRef.current);
             elapsedRef.current = null;
         }
+    };
 
     const submitForReview = async (trainingId: number) => {
         try {
@@ -465,13 +466,11 @@ export function Dashboard() {
                                     item.active ? "bg-[#1e3a5f] text-white" : "text-gray-700 hover:bg-gray-100"
                                 }`}
                             >
-                              View Review Queue
+                                <item.icon className="w-5 h-5" />
+                                {item.label}
                             </button>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
+                        ))}
+                    </nav>
                 </div>
                 <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200">
                     <button
@@ -678,19 +677,6 @@ export function Dashboard() {
                             </table>
                         </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setSelectedSSPId(doc.id);
-                        setShowCreateModal(true);
-                      }}
-                      className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors"
-                    >
-                      Generate Training
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
 
                     {/* ── Recent SSPs + Recent Generations ── */}
                     <div className="grid grid-cols-2 gap-6">
@@ -1012,13 +998,8 @@ export function Dashboard() {
                             <button onClick={() => rejectTraining(showRejectModal)} className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">Reject</button>
                         </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                </div>
             )}
-          </div>
-        </main>
-      </div>
 
             {/* ── Media Management Modal ── */}
             {showMediaModal !== null && (
