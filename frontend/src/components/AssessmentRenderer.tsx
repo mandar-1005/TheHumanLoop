@@ -147,7 +147,8 @@ async function gradeAnswer(
     const normalizedCriteria = (detail.criterion_scores ?? []).map(
         (c: { criterion: string; weight: number; score: number; rationale: string }) => ({
             ...c,
-            score: c.score > 1 ? c.score / 100 : c.score,
+            score:  c.score  > 1 ? c.score  / 100 : c.score,
+            weight: c.weight,
         }),
     );
     return {
@@ -1127,19 +1128,22 @@ function EvaluationAssessment({ questions, role, onComplete }: { questions: Ques
                 </div>
                 {q.scenario && (<div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><p className="text-xs font-semibold text-blue-700 mb-2">SCENARIO</p><p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">{q.scenario}</p></div>)}
                 {q.prompt && (<div className="bg-amber-50 border border-amber-200 rounded-lg p-4"><p className="text-xs font-semibold text-amber-700 mb-2">QUESTION</p><p className="text-sm text-gray-800 leading-relaxed">{q.prompt}</p></div>)}
-                {q.criteria && q.criteria.length > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
-                        <p className="text-xs font-semibold text-rose-700 mb-2">EVALUATION CRITERIA</p>
-                        <div className="space-y-2">
-                            {q.criteria.map((c, i) => (
-                                <div key={i} className="flex items-start gap-2 text-sm">
-                                    <span className="bg-rose-200 text-rose-800 text-xs font-bold rounded px-1.5 py-0.5 shrink-0">{Math.round(c.weight * 100)}%</span>
-                                    <div><span className="font-medium text-gray-900">{c.name}: </span><span className="text-gray-700">{c.description}</span></div>
-                                </div>
-                            ))}
+                {q.criteria && q.criteria.length > 0 && (() => {
+                    const totalWeight = q.criteria!.reduce((sum, c) => sum + c.weight, 0);
+                    return (
+                        <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
+                            <p className="text-xs font-semibold text-rose-700 mb-2">EVALUATION CRITERIA</p>
+                            <div className="space-y-2">
+                                {q.criteria!.map((c, i) => (
+                                    <div key={i} className="flex items-start gap-2 text-sm">
+                                        <span className="bg-rose-200 text-rose-800 text-xs font-bold rounded px-1.5 py-0.5 shrink-0">{Math.round((c.weight / totalWeight) * 100)}%</span>
+                                        <div><span className="font-medium text-gray-900">{c.name}: </span><span className="text-gray-700">{c.description}</span></div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
                 {q.max_score && <p className="text-xs text-gray-500">Max score: {q.max_score} points</p>}
                 <textarea value={g.answer} onChange={e => g.setAnswer(e.target.value)} disabled={g.submitted} rows={8}
                           className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
