@@ -18,6 +18,8 @@ import {
     Clock,
     Download,
     LogOut,
+    Menu,
+    X,
 } from "lucide-react";
 import {
     BarChart,
@@ -188,6 +190,8 @@ export function Dashboard() {
 
     const [activeTab, setActiveTab] = useState("Developers");
     const tabs = ["Developers", "Security Leads", "Team Leads", "Other"];
+
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRole, setNewRole] = useState("");
@@ -467,18 +471,40 @@ export function Dashboard() {
             className="min-h-screen bg-gray-50"
             style={{ fontFamily: "Inter, system-ui, sans-serif" }}
         >
-            <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 z-10">
+            {/* Mobile backdrop */}
+            {mobileSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+                    onClick={() => setMobileSidebarOpen(false)}
+                    aria-hidden="true"
+                />
+            )}
+
+            <aside
+                className={`fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 z-40 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+                    mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                }`}
+            >
                 <div className="p-6">
-                    <div className="flex items-center gap-3 mb-10">
-                        <div className="w-10 h-10 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
-                            <Shield className="w-6 h-6 text-white" />
+                    <div className="flex items-center justify-between mb-10">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
+                                <Shield className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-gray-900">
+                                    Secure Training
+                                </h1>
+                                <p className="text-xs text-gray-500">MARi Platform</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-lg font-bold text-gray-900">
-                                Secure Training
-                            </h1>
-                            <p className="text-xs text-gray-500">MARi Platform</p>
-                        </div>
+                        <button
+                            onClick={() => setMobileSidebarOpen(false)}
+                            className="lg:hidden p-1 -mr-1 text-gray-500 hover:text-gray-700"
+                            aria-label="Close menu"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
                     </div>
 
                     <nav className="space-y-1">
@@ -486,6 +512,7 @@ export function Dashboard() {
                             <button
                                 key={item.label}
                                 onClick={() => {
+                                    setMobileSidebarOpen(false);
                                     if (
                                         item.href === "/training-modules" ||
                                         item.href === "/ssp-documents" ||
@@ -527,36 +554,49 @@ export function Dashboard() {
                 </div>
             </aside>
 
-            <div className="ml-64">
-                <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-                    <div className="px-8 py-4">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h2 className="text-2xl font-semibold text-gray-900">
-                                    Dashboard
-                                </h2>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Welcome back, {displayName}
-                                </p>
+            <div className="lg:ml-64">
+                <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
+                    <div className="px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <button
+                                    onClick={() => setMobileSidebarOpen(true)}
+                                    className="lg:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                                    aria-label="Open menu"
+                                >
+                                    <Menu className="w-5 h-5" />
+                                </button>
+                                <div className="min-w-0">
+                                    <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 truncate">
+                                        Dashboard
+                                    </h2>
+                                    <p className="hidden sm:block text-sm text-gray-600 mt-1 truncate">
+                                        Welcome back, {displayName}
+                                    </p>
+                                </div>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
+                            <div className="flex items-center gap-2 sm:gap-4">
+                                <div className="hidden md:block relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
                                         type="text"
                                         placeholder="Search trainings..."
-                                        className="pl-10 pr-4 py-2 w-80 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="pl-10 pr-4 py-2 w-56 lg:w-80 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                                     />
                                 </div>
 
-                                <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                                <button className="md:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Search">
+                                    <Search className="w-5 h-5 text-gray-600" />
+                                </button>
+
+                                <button className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors" aria-label="Notifications">
                                     <Bell className="w-5 h-5 text-gray-600" />
                                     <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
                                 </button>
 
-                                <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-                                    <div className="text-right">
+                                <div className="flex items-center gap-3 sm:pl-4 sm:border-l sm:border-gray-200">
+                                    <div className="hidden sm:block text-right">
                                         <p className="text-sm font-medium text-gray-900">
                                             {displayName}
                                         </p>
@@ -564,7 +604,7 @@ export function Dashboard() {
                                             {profile?.role ?? ""}
                                         </p>
                                     </div>
-                                    <div className="w-10 h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium">
+                                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-[#1e3a5f] rounded-full flex items-center justify-center text-white font-medium text-sm sm:text-base">
                                         {initials}
                                     </div>
                                 </div>
@@ -573,12 +613,12 @@ export function Dashboard() {
                     </div>
                 </header>
 
-                <main className="p-8 space-y-8">
-                    <div className="grid grid-cols-4 gap-6">
+                <main className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                         {metricsData.map((metric, index) => (
                             <div
                                 key={index}
-                                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                                className="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 hover:shadow-md transition-shadow"
                             >
                                 <div className="flex items-start justify-between mb-4">
                                     <h3 className="text-sm font-medium text-gray-600">
@@ -617,26 +657,27 @@ export function Dashboard() {
                     </div>
 
                     <div className="bg-white rounded-xl border border-gray-200">
-                        <div className="p-6 border-b border-gray-200">
-                            <div className="flex items-center justify-between mb-4">
+                        <div className="p-4 sm:p-6 border-b border-gray-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                                 <h3 className="text-lg font-semibold text-gray-900">
                                     Training Modules by Role
                                 </h3>
                                 <button
                                     onClick={openCreateModal}
-                                    className="flex items-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] transition-colors"
+                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-[#1e3a5f] text-white rounded-lg text-sm font-medium hover:bg-[#152d4a] transition-colors w-full sm:w-auto"
                                 >
                                     <Plus className="w-4 h-4" />
-                                    Create New Training Module
+                                    <span className="sm:hidden">Create Module</span>
+                                    <span className="hidden sm:inline">Create New Training Module</span>
                                 </button>
                             </div>
 
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
                                 {tabs.map((tab) => (
                                     <button
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
-                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
                                             activeTab === tab
                                                 ? "bg-[#1e3a5f] text-white"
                                                 : "text-gray-600 hover:bg-gray-100"
@@ -722,14 +763,14 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                         <div className="bg-white rounded-xl border border-gray-200">
-                            <div className="p-6 border-b border-gray-200">
+                            <div className="p-4 sm:p-6 border-b border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-900">
                                     Recent SSP Documents
                                 </h3>
                             </div>
-                            <div className="p-6 space-y-4">
+                            <div className="p-4 sm:p-6 space-y-4">
                                 {sspLoading && (
                                     <p className="text-sm text-gray-500">Loading documents...</p>
                                 )}
@@ -750,14 +791,14 @@ export function Dashboard() {
                                 {recentSSPs.map((doc) => (
                                     <div
                                         key={doc.id}
-                                        className="flex items-center justify-between p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
+                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all"
                                     >
-                                        <div className="flex items-start gap-3">
+                                        <div className="flex items-start gap-3 min-w-0">
                                             <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
                                                 <FileText className="w-5 h-5 text-blue-600" />
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-gray-900">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 break-words">
                                                     {doc.file_name}
                                                 </p>
                                                 <p className="text-xs text-gray-500 mt-1">
@@ -769,7 +810,7 @@ export function Dashboard() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <button className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors">
+                                        <button className="px-3 py-1.5 text-xs font-medium text-[#1e3a5f] border border-[#1e3a5f] rounded-lg hover:bg-[#1e3a5f] hover:text-white transition-colors w-full sm:w-auto flex-shrink-0">
                                             Generate Training
                                         </button>
                                     </div>
@@ -778,12 +819,12 @@ export function Dashboard() {
                         </div>
 
                         <div className="bg-white rounded-xl border border-gray-200">
-                            <div className="p-6 border-b border-gray-200">
+                            <div className="p-4 sm:p-6 border-b border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-900">
                                     Recent Generations
                                 </h3>
                             </div>
-                            <div className="p-6">
+                            <div className="p-4 sm:p-6">
                                 <div className="space-y-4">
                                     {recentGenerations.map((gen) => (
                                         <div
@@ -791,15 +832,15 @@ export function Dashboard() {
                                             className="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 last:pb-0"
                                         >
                                             <div
-                                                className={`p-2 rounded-lg ${getGenerationStatusColor(gen.status)}`}
+                                                className={`p-2 rounded-lg flex-shrink-0 ${getGenerationStatusColor(gen.status)}`}
                                             >
                                                 {getGenerationIcon(gen.status)}
                                             </div>
-                                            <div className="flex-1">
-                                                <p className="text-sm font-medium text-gray-900">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-gray-900 break-words">
                                                     {gen.title}
                                                 </p>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex flex-wrap items-center gap-2 mt-1">
                           <span
                               className={`text-xs font-medium px-2 py-0.5 rounded ${getGenerationStatusColor(gen.status)}`}
                           >
@@ -810,7 +851,7 @@ export function Dashboard() {
                           </span>
                                                 </div>
                                             </div>
-                                            <button className="text-gray-400 hover:text-gray-600">
+                                            <button className="text-gray-400 hover:text-gray-600 flex-shrink-0">
                                                 <Download className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -822,7 +863,7 @@ export function Dashboard() {
 
                     {/* ── Review Queue ── */}
                     <div className="bg-white rounded-xl border border-gray-200">
-                        <div className="p-6 border-b border-gray-200">
+                        <div className="p-4 sm:p-6 border-b border-gray-200">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <h3 className="text-lg font-semibold text-gray-900">Review Queue</h3>
@@ -845,7 +886,7 @@ export function Dashboard() {
                         </div>
 
                         {reviewLoading ? (
-                            <div className="p-6 text-sm text-gray-500">Loading review queue...</div>
+                            <div className="p-4 sm:p-6 text-sm text-gray-500">Loading review queue...</div>
                         ) : reviewQueue.length === 0 ? (
                             <div className="p-8 text-center">
                                 <CheckCircle className="w-8 h-8 text-green-300 mx-auto mb-2" />
@@ -855,9 +896,9 @@ export function Dashboard() {
                         ) : (
                             <div className="divide-y divide-gray-200">
                                 {reviewQueue.map((item) => (
-                                    <div key={item.id} className="px-6 py-4 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-900 capitalize">
+                                    <div key={item.id} className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 capitalize break-words">
                                                 {item.company_role} Training
                                             </p>
                                             <p className="text-xs text-gray-500 mt-0.5">
@@ -866,22 +907,22 @@ export function Dashboard() {
                                                 })}
                                             </p>
                                         </div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <button
                                                 onClick={() => navigate("/training-modules")}
-                                                className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
                                             >
                                                 Preview
                                             </button>
                                             <button
                                                 onClick={() => approveTraining(item.id)}
-                                                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
+                                                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
                                             >
                                                 Approve
                                             </button>
                                             <button
                                                 onClick={() => setShowRejectModal(item.id)}
-                                                className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
+                                                className="flex-1 sm:flex-none px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
                                             >
                                                 Reject
                                             </button>
@@ -893,7 +934,7 @@ export function Dashboard() {
                     </div>
 
                     <div className="bg-white rounded-xl border border-gray-200">
-                        <div className="p-6 border-b border-gray-200">
+                        <div className="p-4 sm:p-6 border-b border-gray-200">
                             <h3 className="text-lg font-semibold text-gray-900">
                                 FedRAMP Coverage by Control Family
                             </h3>
@@ -901,16 +942,17 @@ export function Dashboard() {
                                 Compliance coverage across control families
                             </p>
                         </div>
-                        <div className="p-6">
+                        <div className="p-2 sm:p-6">
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={fedRAMPCoverageData}>
+                                <BarChart data={fedRAMPCoverageData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                                     <XAxis
                                         dataKey="name"
-                                        tick={{ fill: "#6b7280", fontSize: 12 }}
-                                        angle={-15}
+                                        tick={{ fill: "#6b7280", fontSize: 10 }}
+                                        angle={-25}
                                         textAnchor="end"
                                         height={80}
+                                        interval={0}
                                     />
                                     <YAxis
                                         tick={{ fill: "#6b7280", fontSize: 12 }}
@@ -938,8 +980,8 @@ export function Dashboard() {
             </div>
 
             {showCreateModal && (
-                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                    <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-6">
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="w-full max-w-md bg-white rounded-xl border border-gray-200 p-5 sm:p-6 my-auto max-h-[90vh] overflow-y-auto">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">
                             Create Training Module
                         </h3>
@@ -1053,8 +1095,8 @@ export function Dashboard() {
 
             {/* ── Success modal ── */}
             {showSuccessModal && (
-                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-6 text-center shadow-xl">
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-5 sm:p-6 text-center shadow-xl my-auto">
                         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                             <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1096,8 +1138,8 @@ export function Dashboard() {
 
             {/* ── Reject reason modal ── */}
             {showRejectModal !== null && (
-                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-6 shadow-xl">
+                <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="w-full max-w-sm bg-white rounded-xl border border-gray-200 p-5 sm:p-6 shadow-xl my-auto">
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">Reject Training</h3>
                         <p className="text-sm text-gray-500 mb-4">Optionally provide a reason for rejection.</p>
                         <textarea

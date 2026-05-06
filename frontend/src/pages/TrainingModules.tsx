@@ -5,6 +5,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AssessmentRenderer from '../components/AssessmentRenderer';
 import type { Assessment, Question } from '../components/AssessmentRenderer';
+import { FolderSidebar } from '../components/FolderSidebar';
+import type { FolderSelection } from '../components/FolderSidebar';
+import {
+    listFolders,
+    createFolder,
+    renameFolder,
+    setFolderColor,
+    deleteFolder,
+    assignDeckToFolder,
+} from '../lib/folders';
+import type { Folder } from '../lib/folders';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -21,6 +32,7 @@ type TrainingRow = {
     training_json: unknown;
     created_at: string | null;
     status?: string;
+    folder_id?: string | null;
 };
 
 type TrainingModule = {
@@ -29,6 +41,7 @@ type TrainingModule = {
     status: TrainingStatus;
     createdAt: string;
     contents: TrainingContent[];
+    folderId: string | null;
 };
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -85,6 +98,7 @@ function mapTraining(row: TrainingRow): TrainingModule {
         status: STATUS_MAP[row.status ?? 'published'] ?? 'Published',
         createdAt: formattedDate,
         contents,
+        folderId: row.folder_id ?? null,
     };
 }
 
@@ -320,15 +334,42 @@ function Sidebar() {
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export function TrainingModulesPage() {
+    const { profile } = useAuth();
     const [rows, setRows] = useState<TrainingModule[]>([]);
+    const [folders, setFolders] = useState<Folder[]>([]);
+    const [folderError, setFolderError] = useState<string | null>(null);
+    const [selectedFolderId, setSelectedFolderId] = useState<FolderSelection>('all');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<TrainingModule | null>(null);
     const [workingContents, setWorkingContents] = useState<TrainingContent[]>([]);
     const [flashcardPersist, setFlashcardPersist] = useState(false);
     const [flashcardSaveMsg, setFlashcardSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+    const [reassigningId, setReassigningId] = useState<string | null>(null);
 
-    const total = useMemo(() => rows.length, [rows]);
+    const filteredRows = useMemo(() => {
+        if (selectedFolderId === 'all') return rows;
+        if (selectedFolderId === 'uncategorized') return rows.filter((r) => r.folderId === null);
+        return rows.filter((r) => r.folderId === selectedFolderId);
+    }, [rows, selectedFolderId]);
+
+    const total = filteredRows.length;
+
+    const deckCounts = useMemo(() => {
+        const byFolder: Record<string, number> = {};
+        let uncategorized = 0;
+        for (const r of rows) {
+            if (r.folderId === null) uncategorized += 1;
+            else byFolder[r.folderId] = (byFolder[r.folderId] ?? 0) + 1;
+        }
+        return { total: rows.length, uncategorized, byFolder };
+    }, [rows]);
+
+    const folderById = useMemo(() => {
+        const map = new Map<string, Folder>();
+        for (const f of folders) map.set(f.id, f);
+        return map;
+    }, [folders]);
 
     useEffect(() => {
         if (selected) {
@@ -343,13 +384,21 @@ export function TrainingModulesPage() {
         const load = async () => {
             setLoading(true);
             setError(null);
+            setFolderError(null);
 
-            const { data, error } = await supabase
-                .from('trainings')
-                .select('id, company_role, training_json, created_at, status')
-                .order('created_at', { ascending: false });
+            const [trainingsResp, foldersResult] = await Promise.all([
+                supabase
+                    .from('trainings')
+                    .select('id, company_role, training_json, created_at, status, folder_id')
+                    .order('created_at', { ascending: false }),
+                listFolders().catch((err: unknown) => {
+                    return err instanceof Error ? err : new Error('Failed to load folders');
+                }),
+            ]);
 
             if (!mounted) return;
+
+            const { data, error } = trainingsResp;
 
             if (error) {
                 setError(error.message);
@@ -358,12 +407,61 @@ export function TrainingModulesPage() {
                 setRows(((data ?? []) as TrainingRow[]).map(mapTraining));
             }
 
+            if (foldersResult instanceof Error) {
+                setFolderError(foldersResult.message);
+                setFolders([]);
+            } else {
+                setFolders(foldersResult);
+            }
+
             setLoading(false);
         };
 
         void load();
         return () => { mounted = false; };
     }, []);
+
+    const handleCreateFolder = async ({ name, color }: { name: string; color: string | null }) => {
+        if (!profile?.organization_id) {
+            throw new Error('No organization on profile');
+        }
+        const created = await createFolder({ name, color, organization_id: profile.organization_id });
+        setFolders((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    };
+
+    const handleRenameFolder = async (id: string, name: string) => {
+        await renameFolder(id, name);
+        setFolders((prev) =>
+            prev.map((f) => (f.id === id ? { ...f, name } : f)).sort((a, b) => a.name.localeCompare(b.name)),
+        );
+    };
+
+    const handleSetFolderColor = async (id: string, color: string | null) => {
+        await setFolderColor(id, color);
+        setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, color } : f)));
+    };
+
+    const handleDeleteFolder = async (id: string) => {
+        await deleteFolder(id);
+        setFolders((prev) => prev.filter((f) => f.id !== id));
+        setRows((prev) => prev.map((r) => (r.folderId === id ? { ...r, folderId: null } : r)));
+        if (selectedFolderId === id) setSelectedFolderId('all');
+    };
+
+    const handleReassignDeck = async (trainingId: string, folderId: string | null) => {
+        setReassigningId(trainingId);
+        const previous = rows;
+        setRows((prev) => prev.map((r) => (r.id === trainingId ? { ...r, folderId } : r)));
+        try {
+            await assignDeckToFolder(trainingId, folderId);
+        } catch (err) {
+            setRows(previous);
+            const msg = err instanceof Error ? err.message : 'Failed to move deck';
+            window.alert(msg);
+        } finally {
+            setReassigningId(null);
+        }
+    };
 
     const handleFlashcardQuestionsChange = async (contentIndex: number, questions: Question[]) => {
         if (!selected) return;
@@ -445,6 +543,13 @@ export function TrainingModulesPage() {
     }
 
     // ── Table view ──
+    const headerLabel =
+        selectedFolderId === 'all'
+            ? 'All Decks'
+            : selectedFolderId === 'uncategorized'
+                ? 'Uncategorized'
+                : folderById.get(selectedFolderId)?.name ?? 'Training Modules';
+
     return (
         <div className="min-h-screen bg-gray-50" style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
             <Sidebar />
@@ -452,59 +557,114 @@ export function TrainingModulesPage() {
                 <main className="p-8">
                     <h1 className="text-2xl font-semibold text-gray-900 mb-2">Training Modules</h1>
                     <p className="text-sm text-gray-600 mb-6">
-                        {total} training{total !== 1 ? 's' : ''} available — click a row to study
+                        {headerLabel} — {total} training{total !== 1 ? 's' : ''}
+                        {selectedFolderId === 'all' ? ' available' : ' in this folder'} — click a row to study
                     </p>
 
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assessment Type</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Modules</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
-                                <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
-                            </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                            {loading && (
+                    {folderError && (
+                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                            Could not load folders: {folderError}
+                        </div>
+                    )}
+
+                    <div className="flex gap-6 items-start">
+                        <FolderSidebar
+                            folders={folders}
+                            selectedFolderId={selectedFolderId}
+                            deckCounts={deckCounts}
+                            onSelect={setSelectedFolderId}
+                            onCreate={handleCreateFolder}
+                            onRename={handleRenameFolder}
+                            onSetColor={handleSetFolderColor}
+                            onDelete={handleDeleteFolder}
+                        />
+
+                        <div className="flex-1 min-w-0 bg-white border border-gray-200 rounded-xl overflow-hidden">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Role</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Assessment Type</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Modules</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Status</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Folder</th>
+                                    <th className="text-left text-xs font-medium text-gray-600 px-6 py-3">Created</th>
                                 </tr>
-                            )}
-                            {!loading && error && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
-                                </tr>
-                            )}
-                            {!loading && !error && rows.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
-                                </tr>
-                            )}
-                            {!loading && !error && rows.map((row) => (
-                                <tr
-                                    key={row.id}
-                                    onClick={() => {
-                                        setSelected(row);
-                                        setWorkingContents(cloneTrainingContents(row.contents));
-                                        setFlashcardSaveMsg(null);
-                                    }}
-                                    className="hover:bg-blue-50 cursor-pointer transition-colors"
-                                >
-                                    <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{row.role}</td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">
-                                        {row.contents[0]?.assessment?.type ?? '—'}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">{row.contents.length}</td>
-                                    <td className="px-6 py-4">
-                                        <StatusBadge status={row.status} />
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                {loading && (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">Loading trainings...</td>
+                                    </tr>
+                                )}
+                                {!loading && error && (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-6 text-sm text-red-600">Failed to load: {error}</td>
+                                    </tr>
+                                )}
+                                {!loading && !error && rows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">No trainings found. Run the AI pipeline to generate some.</td>
+                                    </tr>
+                                )}
+                                {!loading && !error && rows.length > 0 && filteredRows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-6 text-sm text-gray-500">
+                                            No trainings in this folder yet. Use the Folder column to move decks here.
+                                        </td>
+                                    </tr>
+                                )}
+                                {!loading && !error && filteredRows.map((row) => {
+                                    const folder = row.folderId ? folderById.get(row.folderId) : null;
+                                    return (
+                                        <tr
+                                            key={row.id}
+                                            onClick={() => {
+                                                setSelected(row);
+                                                setWorkingContents(cloneTrainingContents(row.contents));
+                                                setFlashcardSaveMsg(null);
+                                            }}
+                                            className="hover:bg-blue-50 cursor-pointer transition-colors"
+                                        >
+                                            <td className="px-6 py-4 text-sm font-medium text-gray-900 capitalize">{row.role}</td>
+                                            <td className="px-6 py-4 text-sm text-gray-700">
+                                                {row.contents[0]?.assessment?.type ?? '—'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-700">{row.contents.length}</td>
+                                            <td className="px-6 py-4">
+                                                <StatusBadge status={row.status} />
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-700" onClick={(e) => e.stopPropagation()}>
+                                                <div className="flex items-center gap-2">
+                                                    <span
+                                                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                                                        style={{ backgroundColor: folder?.color ?? '#d1d5db' }}
+                                                    />
+                                                    <select
+                                                        value={row.folderId ?? ''}
+                                                        onChange={(e) => {
+                                                            const value = e.target.value;
+                                                            void handleReassignDeck(row.id, value === '' ? null : value);
+                                                        }}
+                                                        disabled={reassigningId === row.id}
+                                                        className="text-sm border border-gray-200 rounded-md px-2 py-1 bg-white hover:border-gray-300 focus:outline-none focus:border-[#1e3a5f] disabled:opacity-60"
+                                                    >
+                                                        <option value="">None</option>
+                                                        {folders.map((f) => (
+                                                            <option key={f.id} value={f.id}>
+                                                                {f.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-700">{row.createdAt}</td>
+                                        </tr>
+                                    );
+                                })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </main>
             </div>

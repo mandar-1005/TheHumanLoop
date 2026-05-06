@@ -63,7 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     useEffect(() => {
-        supabase.auth.getSession().then(async ({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+            if (error) {
+                await supabase.auth.signOut();
+                setSession(null);
+                setProfile(null);
+                setAAL(null);
+                setLoading(false);
+                return;
+            }
             setSession(session);
             if (session?.user) {
                 await fetchProfile(session.user.id);
@@ -72,7 +80,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'TOKEN_REFRESHED' && !session) {
+                setSession(null);
+                setProfile(null);
+                setAAL(null);
+                return;
+            }
             setSession(session);
             if (session?.user) {
                 fetchProfile(session.user.id);
