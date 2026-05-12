@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useRememberingViewMode, type RememberingViewMode } from '../hooks/useRememberingViewMode';
 import { ContentModerationFilter, ModerationWarning, type ModerationResult } from '../pages/ContentModerationFilter';
+import { apiUrl } from '../lib/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ type GradeResult = {
     criterion_scores?: { criterion: string; weight: number; score: number; rationale: string }[];
 };
 
-const GRADING_API = 'http://127.0.0.1:8000/grading/grade';
+const GRADING_API = apiUrl('/grading/grade');
 
 // ─── Format Resolution ──────────────────────────────────────────────────────
 

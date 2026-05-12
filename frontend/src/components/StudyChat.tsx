@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, ThumbsUp, ThumbsDown, MessageCircle } from 'lucide-react';
+import { apiUrl } from '../lib/api';
 
-const CHAT_API = 'http://127.0.0.1:8000/chat/ask';
+const CHAT_API = apiUrl('/chat/ask');
 
 interface Message {
     id: string;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useStudyResume } from "../hooks/useStudyResume";
 import { StudyToolsPanel } from "../components/StudyToolsPanel";
 import { supabase } from "../lib/supabaseClient";
+import { apiUrl } from "../lib/api";
 import {
   ChevronLeft,
   BookOpen,
@@ -610,7 +611,7 @@ export function TrainingModulesPage() {
 
       try {
         const response = await fetch(
-          `http://127.0.0.1:8000/api/trainings/${selected.id}/revisions`,
+          apiUrl(`/api/trainings/${selected.id}/revisions`),
         );
         const body = await response.json();
 
@@ -682,7 +683,7 @@ export function TrainingModulesPage() {
     setReviewLoading(true);
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/submit-review`,
+        apiUrl(`/api/trainings/${selected.id}/submit-review`),
         { method: "POST" },
       );
       if (!res.ok) throw new Error("Failed to submit for review");
@@ -699,7 +700,7 @@ export function TrainingModulesPage() {
     setReviewLoading(true);
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/approve?user_id=${user.id}`,
+        `${apiUrl(`/api/trainings/${selected.id}/approve`)}?user_id=${user.id}`,
         { method: "POST" },
       );
       if (!res.ok) throw new Error("Failed to approve training");
@@ -716,7 +717,7 @@ export function TrainingModulesPage() {
     setReviewLoading(true);
     try {
       const res = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/reject?user_id=${user.id}`,
+        `${apiUrl(`/api/trainings/${selected.id}/reject`)}?user_id=${user.id}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -847,7 +848,7 @@ export function TrainingModulesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/regenerate`,
+        apiUrl(`/api/trainings/${selected.id}/regenerate`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -869,7 +870,7 @@ export function TrainingModulesPage() {
       setCritiqueText("");
 
       const revisionsResponse = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/revisions`,
+        apiUrl(`/api/trainings/${selected.id}/revisions`),
       );
       const revisionsBody = await revisionsResponse.json();
       if (revisionsResponse.ok) {
@@ -893,7 +894,7 @@ export function TrainingModulesPage() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/accept-revision`,
+        apiUrl(`/api/trainings/${selected.id}/accept-revision`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -913,7 +914,7 @@ export function TrainingModulesPage() {
       setRevisionSuccess(`Accepted revision ${revisionNumber}.`);
 
       const revisionsResponse = await fetch(
-        `http://127.0.0.1:8000/api/trainings/${selected.id}/revisions`,
+        apiUrl(`/api/trainings/${selected.id}/revisions`),
       );
       const revisionsBody = await revisionsResponse.json();
       if (revisionsResponse.ok) {
